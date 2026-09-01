@@ -8,6 +8,7 @@ import { OverviewDashboard } from './dashboard/OverviewDashboard';
 import { SettingsView } from './layout/SettingsView';
 import { MappingRulesViewer } from './rules/MappingRulesViewer';
 import { EquipmentCatalogViewer } from './equipment/EquipmentCatalogViewer';
+import { NotFoundPage } from '@/components/ui/404-page-not-found';
 import { Icon } from './common/Icon';
 
 interface PDFDoc {
@@ -262,10 +263,7 @@ export function BoqPage({ onLogout }: BoqPageProps) {
               }}
             />
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-              <Icon name="layout" size={32} className="mb-2 opacity-50" />
-              <p className="text-sm font-medium">Select a view from the sidebar to get started</p>
-            </div>
+            <NotFoundPage onGoHome={() => setActiveTab('dashboard')} />
           )}
         </div>
       </SidebarInset>
