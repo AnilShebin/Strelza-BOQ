@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { LoginForm } from "@/components/login-form"
 import { BoqPage } from "@/components/boq-page"
 import { Button } from "@/components/ui/button"
+import { Toaster } from "@/components/ui/sonner"
 import heroImg from "@/assets/hero-boq.jpg"
 
 export default function App() {
@@ -26,11 +27,17 @@ export default function App() {
   }
 
   if (isLoggedIn) {
-    return <BoqPage onLogout={() => setIsLoggedIn(false)} />
+    return (
+      <>
+        <BoqPage onLogout={() => setIsLoggedIn(false)} />
+        <Toaster richColors position="top-right" closeButton />
+      </>
+    )
   }
 
   return (
     <div className="grid h-screen w-screen max-h-screen overflow-hidden lg:grid-cols-2 bg-background">
+      <Toaster richColors position="top-right" closeButton />
       <div className="flex h-full flex-col justify-between overflow-y-auto p-6 md:px-12 md:py-8 relative">
         <div className="flex justify-between items-center w-full">
           <a href="#" className="inline-flex items-center hover:opacity-90 transition-opacity">
