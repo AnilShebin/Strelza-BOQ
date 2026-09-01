@@ -1,5 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Icon } from '../common/Icon';
+import { Button } from '@/components/ui/button';
+import { FileTextIcon, PlusIcon, UploadCloudIcon, FolderOpenIcon } from 'lucide-react';
 
 interface PDFCanvasProps {
   pdfDoc: any;
@@ -18,6 +20,7 @@ interface PDFCanvasProps {
   containerWidth: number;
   containerRef: React.RefObject<HTMLDivElement | null>;
   onLoadPDF: () => void;
+  onOpenProject?: () => void;
   pdfBase64: string;
   markups: any[];
   onAddMarkup: (stroke: any) => void;
@@ -32,7 +35,7 @@ interface PDFCanvasProps {
 export const PDFCanvas: React.FC<PDFCanvasProps> = ({
   pdfDoc, currentPage, scale, rotation, zoomMode, zoomScale, setScale,
   dimensions, setDimensions, loading, setLoading, interactionMode, isPanning,
-  containerWidth, containerRef, onLoadPDF, pdfBase64,
+  containerWidth, containerRef, onLoadPDF, onOpenProject, pdfBase64,
   markups = [], onAddMarkup, onDeleteMarkup, onClearPageMarkups,
   highlightedBbox = null, onHighlightBbox,
   highlightAll = false, pageElements = [],
@@ -206,15 +209,36 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
 
   if (!pdfBase64) {
     return (
-      <div className="flex flex-col items-center justify-center text-center p-8 my-auto mx-auto select-none max-w-md">
-        <div className="w-16 h-16 rounded-full bg-accent-blue/10 flex items-center justify-center mb-5 text-accent-blue">
-          <Icon name="file-text" size={28} />
+      <div className="flex flex-col items-center justify-center text-center p-8 my-auto mx-auto select-none max-w-lg">
+        <div className="size-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-4 text-primary shadow-xs">
+          <FileTextIcon className="size-7 text-primary" />
         </div>
-        <h3 className="text-base font-bold text-text-primary mb-2">No Drawing Loaded</h3>
-        <p className="text-xs text-text-muted mb-6 leading-relaxed">To extract structural BOQ and material items, select a telecom PDF drawing using the import tool.</p>
-        <button onClick={onLoadPDF} className="bg-accent-blue hover:bg-accent-blue-hover text-white px-4 py-2.5 rounded-lg text-xs font-semibold transition-all shadow-md flex items-center gap-2 cursor-pointer border-0">
-          <Icon name="plus" size={12} /><span>Import PDF Drawing</span>
-        </button>
+        <h3 className="text-base font-semibold text-foreground tracking-tight mb-1.5">No Drawing Loaded</h3>
+        <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-sm">
+          To extract structural BOQ, panel antennas, and material items, select a telecom PDF drawing or import an existing project workspace.
+        </p>
+        <div className="flex items-center gap-2.5 flex-wrap justify-center">
+          <Button
+            onClick={onLoadPDF}
+            size="sm"
+            className="h-9 px-4 text-xs gap-2 cursor-pointer bg-primary text-primary-foreground font-medium rounded-lg shadow-2xs hover:bg-primary/90 transition-all"
+          >
+            <UploadCloudIcon className="size-4" />
+            <span>Import PDF Drawing</span>
+          </Button>
+
+          {onOpenProject && (
+            <Button
+              onClick={onOpenProject}
+              variant="outline"
+              size="sm"
+              className="h-9 px-4 text-xs gap-2 cursor-pointer bg-background/80 hover:bg-muted/80 text-foreground font-medium rounded-lg border-border/80 shadow-2xs transition-all"
+            >
+              <FolderOpenIcon className="size-4 text-muted-foreground" />
+              <span>Import Project (.json)</span>
+            </Button>
+          )}
+        </div>
       </div>
     );
   }

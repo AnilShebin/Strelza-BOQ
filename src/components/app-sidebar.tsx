@@ -90,6 +90,8 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onTabChange?: (tab: string) => void
   theme?: "light" | "dark"
   onToggleTheme?: () => void
+  onOpenProject?: () => void
+  onSaveProject?: () => void
   onSignOut?: () => void
 }
 

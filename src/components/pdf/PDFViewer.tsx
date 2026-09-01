@@ -376,6 +376,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
               containerWidth={containerWidth}
               containerRef={containerRef}
               onLoadPDF={onLoadPDF}
+              onOpenProject={onOpenProject}
               pdfBase64={pdfBase64}
               markups={markups}
               onAddMarkup={onAddMarkup}

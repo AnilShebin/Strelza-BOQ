@@ -158,7 +158,7 @@ export function BoqPage({ onLogout }: BoqPageProps) {
   };
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={false}>
       <AppSidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -169,21 +169,20 @@ export function BoqPage({ onLogout }: BoqPageProps) {
         onSignOut={onLogout}
       />
       <SidebarInset className="flex flex-col min-w-0 h-screen overflow-hidden">
-        {/* TopBar: Tabs, Search, Actions (Only visible in Document Viewer) */}
-        {activeTab === 'documents' && (
-          <header className="flex flex-col z-50 shrink-0">
-            <TopBar
-              openPdfs={openPdfs}
-              activePdfIndex={activePdfIndex}
-              onSelectPDF={handleSelectPDF}
-              onClosePDF={handleClosePDF}
-              onLoadPDF={handleLoadPDF}
-              onSaveProject={handleSaveProject}
-              onOpenProject={handleOpenProject}
-              onSignOut={onLogout}
-            />
-          </header>
-        )}
+        {/* TopBar: Global Document Tabs, Sidebar Trigger, Open & Save Project Actions */}
+        <header className="flex flex-col z-50 shrink-0">
+          <TopBar
+            openPdfs={openPdfs}
+            activePdfIndex={activePdfIndex}
+            activeTab={activeTab}
+            onSelectPDF={handleSelectPDF}
+            onClosePDF={handleClosePDF}
+            onLoadPDF={handleLoadPDF}
+            onSaveProject={handleSaveProject}
+            onOpenProject={handleOpenProject}
+            onSignOut={onLogout}
+          />
+        </header>
 
         {/* Viewport Dynamic Content Area */}
         <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden bg-background">
@@ -196,6 +195,8 @@ export function BoqPage({ onLogout }: BoqPageProps) {
               totalPages={activePdf?.totalPages || 1}
               onDocumentLoad={(pages: number) => updateActivePdfField('totalPages', pages)}
               onLoadPDF={handleLoadPDF}
+              onOpenProject={handleOpenProject}
+              onSaveProject={handleSaveProject}
               analyzedData={null}
               analyzing={false}
               analysisError={null}
@@ -204,8 +205,8 @@ export function BoqPage({ onLogout }: BoqPageProps) {
               onViewDashboard={() => setActiveTab('dashboard')}
               extractedData={null}
               extracting={false}
-              onStartExtraction={() => {}}
-              onReextractPage={() => {}}
+              onStartExtraction={() => { }}
+              onReextractPage={() => { }}
               extractingPage={false}
               highlightedBbox={highlightedBbox}
               onHighlightBbox={setHighlightedBbox}
@@ -213,11 +214,11 @@ export function BoqPage({ onLogout }: BoqPageProps) {
               onAddMarkup={(m: any) => setMarkups((prev) => [...prev, m])}
               onDeleteMarkup={(id: string) => setMarkups((prev) => prev.filter((m) => m.id !== id))}
               onClearPageMarkups={(page: number) => setMarkups((prev) => prev.filter((m) => m.page !== page))}
-              onSelectVersion={() => {}}
+              onSelectVersion={() => { }}
               projectVersions={[]}
               activeVersionId=""
-              onUndoMarkup={() => {}}
-              onRedoMarkup={() => {}}
+              onUndoMarkup={() => { }}
+              onRedoMarkup={() => { }}
               canUndoMarkup={false}
               canRedoMarkup={false}
             />
@@ -227,7 +228,7 @@ export function BoqPage({ onLogout }: BoqPageProps) {
               geminiRateLimit={geminiRateLimit}
               handleUpdateDefaultTheme={(t: 'light' | 'dark') => setTheme(t)}
               handleUpdateRateLimit={setGeminiRateLimit}
-              handleClearCache={() => {}}
+              handleClearCache={() => { }}
               clearingCache={false}
               cacheClearStatus={null}
               onCancel={() => setActiveTab('dashboard')}
@@ -246,7 +247,7 @@ export function BoqPage({ onLogout }: BoqPageProps) {
               onTabChange={setActiveTab}
               extractedData={null}
               extracting={false}
-              onStartExtraction={() => {}}
+              onStartExtraction={() => { }}
             />
           ) : activeTab === 'boq' || activeTab === 'pricelist' ? (
             <BOQDashboard

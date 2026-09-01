@@ -1,6 +1,50 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Icon } from '../common/Icon';
-import { toast, confirmModal } from '../common/Toast';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SelectGroup,
+} from '@/components/ui/select';
+import {
+  ChevronDownIcon,
+  CheckIcon,
+  PlusIcon,
+  SearchIcon,
+  RotateCcwIcon,
+  PencilIcon,
+  Trash2Icon,
+  XIcon,
+  FilterIcon,
+  SparklesIcon,
+  ArrowUpDownIcon,
+  ArrowUpIcon,
+  ArrowDownIcon,
+} from 'lucide-react';
+import { toast } from 'sonner';
 
 export interface MappingRuleItem {
   id: number;
@@ -30,6 +74,153 @@ export interface MappingRuleItem {
   notes?: string;
 }
 
+const DEFAULT_MAPPING_RULES: MappingRuleItem[] = [
+  {
+    id: 1,
+    internal_id: 'R001',
+    rule_name: 'Install Panel Antenna <= 2.0m on existing mount',
+    category: 'Antennas & RRUs',
+    equipment_type: 'PANEL_ANTENNA',
+    match_keywords: 'PANEL, ANTENNA, NNHH, RVVPX, COMMSCOPE',
+    exclude_keywords: 'TMA, RRU, FEEDER',
+    condition_expr: 'ACTION == INSTALL',
+    action_filter: 'INSTALL',
+    target_sor_code: '1010-01',
+    qty_formula: '1',
+    comment_template: 'Extracted from Antenna Layout',
+    priority: 10,
+    enabled: 1,
+    matching_conditions: 'Proposed panel antenna on existing tower mount',
+    notes: 'Standard antenna install rate',
+  },
+  {
+    id: 2,
+    internal_id: 'R002',
+    rule_name: 'Install Remote Radio Unit (RRU) on tower mount',
+    category: 'Antennas & RRUs',
+    equipment_type: 'RRU',
+    match_keywords: 'RRU, RADIO, 4415, AIRSCALE, NOKIA, ERICSSON',
+    exclude_keywords: 'PANEL, FEEDER',
+    condition_expr: 'ACTION == INSTALL',
+    action_filter: 'INSTALL',
+    target_sor_code: '1010-02',
+    qty_formula: '1',
+    comment_template: 'Extracted from Equipment Schedule',
+    priority: 9,
+    enabled: 1,
+    matching_conditions: 'Remote Radio Unit tower mounting',
+    notes: 'Radio unit installation',
+  },
+  {
+    id: 3,
+    internal_id: 'R003',
+    rule_name: 'Recover existing legacy antenna & mount hardware',
+    category: 'Antennas & RRUs',
+    equipment_type: 'PANEL_ANTENNA',
+    match_keywords: 'REMOVE, DECOMMISSION, RECOVER, RETIRE, OLD',
+    exclude_keywords: 'PROPOSED, NEW',
+    condition_expr: 'ACTION == REMOVE',
+    action_filter: 'REMOVE',
+    target_sor_code: '1020-05',
+    qty_formula: '1',
+    comment_template: 'Decommissioned legacy antenna',
+    priority: 8,
+    enabled: 1,
+    matching_conditions: 'Decommissioning of legacy equipment',
+    notes: 'Recovery SOR item',
+  },
+  {
+    id: 4,
+    internal_id: 'R004',
+    rule_name: 'Install 1/2" Coaxial Feeder Cable per metre run',
+    category: 'Power & Feeder',
+    equipment_type: 'FEEDER',
+    match_keywords: 'FEEDER, COAX, LDF4, HELIAX, 1/2"',
+    exclude_keywords: 'HYBRID, POWER',
+    condition_expr: 'ACTION == INSTALL',
+    action_filter: 'INSTALL',
+    target_sor_code: '2010-01',
+    qty_formula: 'LENGTH_METRES',
+    comment_template: 'Feeder run from gantry to antenna',
+    priority: 7,
+    enabled: 1,
+    matching_conditions: 'Coaxial feeder cabling',
+    notes: 'Per meter rate',
+  },
+  {
+    id: 5,
+    internal_id: 'R005',
+    rule_name: 'Install DC Over-Voltage Surge Protection Box (OVP)',
+    category: 'Power & Feeder',
+    equipment_type: 'OVP',
+    match_keywords: 'DC6, SURGE, OVP, RAYCAP, ARRESTOR',
+    exclude_keywords: 'FEEDER',
+    condition_expr: 'ACTION == INSTALL',
+    action_filter: 'INSTALL',
+    target_sor_code: '2020-03',
+    qty_formula: '1',
+    comment_template: 'DC surge suppressor junction box',
+    priority: 6,
+    enabled: 1,
+    matching_conditions: 'DC power surge suppressor installation',
+    notes: 'Tower top distribution box',
+  },
+  {
+    id: 6,
+    internal_id: 'R006',
+    rule_name: 'Heavy-Duty Triangular Tower Headframe Mount Assembly',
+    category: 'Civil & Rigging',
+    equipment_type: 'MOUNT',
+    match_keywords: 'HEADFRAME, MOUNT, STEELWORK, TRIANGULAR',
+    exclude_keywords: 'ANTENNA',
+    condition_expr: 'ACTION == INSTALL',
+    action_filter: 'INSTALL',
+    target_sor_code: '3010-04',
+    qty_formula: '1',
+    comment_template: 'Structural headframe steelwork',
+    priority: 5,
+    enabled: 1,
+    matching_conditions: 'Tower headframe mounting assembly',
+    notes: 'Headframe rigging works',
+  },
+  {
+    id: 7,
+    internal_id: 'R007',
+    rule_name: 'Climbing Ladder Safety Cable Fall-Arrest System',
+    category: 'Civil & Rigging',
+    equipment_type: 'SAFETY',
+    match_keywords: 'LADDER, FALL-ARREST, CABLOC, LATCHWAYS',
+    exclude_keywords: 'ANTENNA',
+    condition_expr: 'ACTION == INSTALL',
+    action_filter: 'INSTALL',
+    target_sor_code: '3020-02',
+    qty_formula: 'LENGTH_METRES',
+    comment_template: 'Tower safety climbing cable',
+    priority: 5,
+    enabled: 1,
+    matching_conditions: 'Tower safety climbing system installation',
+    notes: 'Rigging safety installation',
+  },
+  {
+    id: 8,
+    internal_id: 'R008',
+    rule_name: 'Site Commissioning, Sweep Testing & PIM Certification',
+    category: 'Testing & Integration',
+    equipment_type: 'TESTING',
+    match_keywords: 'COMMISSIONING, SWEEP, PIM, TESTING, VSWR',
+    exclude_keywords: 'CRANE',
+    condition_expr: 'ACTION == INSTALL',
+    action_filter: 'INSTALL',
+    target_sor_code: '5010-02',
+    qty_formula: '1',
+    comment_template: 'Carrier integration & site QA handover',
+    priority: 4,
+    enabled: 1,
+    matching_conditions: 'RF testing, line sweeps and PIM tests',
+    notes: 'Mandatory handover certification',
+  },
+];
+
 interface CustomDropdownProps {
   items: any[];
   selectedValue: { code?: string; name?: string } | null;
@@ -37,7 +228,12 @@ interface CustomDropdownProps {
   placeholder?: string;
 }
 
-const CustomDropdown: React.FC<CustomDropdownProps> = ({ items, selectedValue, onChange, placeholder = 'Search Price List Item...' }) => {
+const CustomDropdown: React.FC<CustomDropdownProps> = ({
+  items,
+  selectedValue,
+  onChange,
+  placeholder = 'Search SOR Item...',
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -55,16 +251,17 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({ items, selectedValue, o
   const filteredItems = useMemo(() => {
     if (!searchTerm.trim()) return items;
     const term = searchTerm.toLowerCase();
-    return items.filter(item => 
-      (item.code || '').toLowerCase().includes(term) ||
-      (item.name || '').toLowerCase().includes(term) ||
-      (item.category || '').toLowerCase().includes(term)
+    return items.filter(
+      (item) =>
+        (item.code || '').toLowerCase().includes(term) ||
+        (item.name || '').toLowerCase().includes(term) ||
+        (item.category || '').toLowerCase().includes(term)
     );
   }, [items, searchTerm]);
 
   const selectedItem = useMemo(() => {
     if (!selectedValue) return null;
-    return items.find(item => item.code === selectedValue.code && item.name === selectedValue.name);
+    return items.find((item) => item.code === selectedValue.code && item.name === selectedValue.name);
   }, [items, selectedValue]);
 
   return (
@@ -75,31 +272,31 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({ items, selectedValue, o
           setIsOpen(!isOpen);
           setSearchTerm('');
         }}
-        className="w-full h-8 px-2.5 bg-bg-app border border-border-color rounded text-xs outline-none focus:border-accent-blue font-semibold text-text-primary text-left flex items-center justify-between shadow-sm cursor-pointer"
+        className="w-full h-8 px-2.5 bg-background border border-border/80 rounded-md text-xs outline-none focus:border-primary font-medium text-foreground text-left flex items-center justify-between shadow-2xs cursor-pointer"
       >
         <span className="truncate pr-4">
-          {selectedItem ? `${selectedItem.code} - ${selectedItem.name}` : '-- Choose an item from the Price List --'}
+          {selectedItem ? `${selectedItem.code} - ${selectedItem.name}` : '-- Choose from Price List --'}
         </span>
-        <Icon name="chevron_down" size={14} className={`text-text-muted transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDownIcon className={`size-3.5 text-muted-foreground transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 right-0 mt-1 z-50 bg-bg-panel border border-border-color rounded shadow-xl max-h-[300px] flex flex-col overflow-hidden animate-fadeIn">
-          <div className="p-2 border-b border-border-color bg-bg-app flex items-center gap-1.5 shrink-0">
-            <Icon name="search" size={12} className="text-text-muted" />
+        <div className="absolute left-0 right-0 mt-1 z-50 bg-popover border border-border/80 rounded-lg shadow-xl max-h-[260px] flex flex-col overflow-hidden animate-in fade-in-0 zoom-in-95 duration-100">
+          <div className="p-2 border-b border-border/80 bg-muted/40 flex items-center gap-1.5 shrink-0">
+            <SearchIcon className="size-3 text-muted-foreground" />
             <input
               type="text"
               autoFocus
               placeholder={placeholder}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full h-7 bg-bg-panel border border-border-color rounded px-2 text-xs text-text-primary outline-none focus:border-accent-blue"
+              className="w-full h-7 bg-background border border-border/80 rounded px-2 text-xs text-foreground outline-none focus:border-primary"
             />
           </div>
 
-          <div className="flex-1 overflow-y-auto custom-scrollbar bg-bg-panel py-1">
+          <div className="flex-1 overflow-y-auto py-1">
             {filteredItems.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-text-muted italic text-center">No items found</div>
+              <div className="px-3 py-2 text-xs text-muted-foreground italic text-center">No matching items found</div>
             ) : (
               filteredItems.map((item, idx) => {
                 const isSelected = item.code === selectedValue?.code && item.name === selectedValue?.name;
@@ -111,19 +308,19 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({ items, selectedValue, o
                       onChange(item);
                       setIsOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-2 text-xs flex flex-col gap-0.5 hover:bg-accent-blue/10 hover:text-accent-blue cursor-pointer transition-colors border-b border-border-color/10 last:border-b-0 ${
-                      isSelected ? 'bg-accent-blue/5 text-accent-blue font-bold border-l-2 border-accent-blue' : 'text-text-secondary'
+                    className={`w-full text-left px-3 py-1.5 text-xs flex flex-col gap-0.5 hover:bg-muted/60 cursor-pointer transition-colors border-b border-border/40 last:border-b-0 ${
+                      isSelected ? 'bg-primary/10 text-primary font-semibold' : 'text-foreground'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono font-bold text-[10px] text-accent-blue shrink-0">{item.code}</span>
+                      <span className="font-mono font-semibold text-[10px] text-primary shrink-0">{item.code}</span>
                       {item.category && (
-                        <span className="text-[9px] px-1 bg-bg-app border border-border-color rounded text-text-muted uppercase max-w-[200px] truncate">
+                        <span className="text-[9px] px-1 bg-muted rounded text-muted-foreground uppercase max-w-[180px] truncate">
                           {item.category}
                         </span>
                       )}
                     </div>
-                    <span className="text-left leading-relaxed whitespace-normal break-words">{item.name}</span>
+                    <span className="text-left leading-snug whitespace-normal break-words text-[11px]">{item.name}</span>
                   </button>
                 );
               })
@@ -135,316 +332,163 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({ items, selectedValue, o
   );
 };
 
+const getActionBadgeStyle = (action: string) => {
+  const a = (action || '').toUpperCase();
+  if (a === 'INSTALL') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25';
+  if (a === 'REMOVE') return 'bg-rose-500/10 text-rose-400 border-rose-500/25';
+  if (a === 'RELOCATE') return 'bg-amber-500/10 text-amber-400 border-amber-500/25';
+  return 'bg-sky-500/10 text-sky-400 border-sky-500/25';
+};
 
 interface MappingRulesViewerProps {
   embedded?: boolean;
 }
 
 export const MappingRulesViewer: React.FC<MappingRulesViewerProps> = ({ embedded = false }) => {
-  const [rules, setRules] = useState<MappingRuleItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [rules, setRules] = useState<MappingRuleItem[]>(DEFAULT_MAPPING_RULES);
+  const [priceListItems, setPriceListItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [selectedAction, setSelectedAction] = useState<string>('ALL');
+  const [selectedRuleIds, setSelectedRuleIds] = useState<Set<number>>(new Set());
+
+  // Modal states
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingRule, setEditingRule] = useState<Partial<MappingRuleItem> | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [isUploading, setIsUploading] = useState<boolean>(false);
-  const [testRegexInput, setTestRegexInput] = useState<string>('');
-  const [testRegexResult, setTestRegexResult] = useState<{ isMatch: boolean; matches: string[]; error?: string } | null>(null);
-  const [selectedRuleIds, setSelectedRuleIds] = useState<Set<number>>(new Set());
-  const [priceListItems, setPriceListItems] = useState<any[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [deleteConfirmState, setDeleteConfirmState] = useState<{ isOpen: boolean; ruleId?: number; ruleName?: string } | null>(null);
 
-  const fetchPriceList = async () => {
+  // Background non-blocking fetch with 1.2s timeout
+  const fetchRules = useCallback(async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+
     try {
-      const res = await fetch('http://localhost:8000/api/price-list');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const items = (data.items || []).filter((item: any) => item.row_type === 'data_item');
-      setPriceListItems(items);
-      
-      const cats = Array.from(new Set(items.map((item: any) => item.category).filter(Boolean))) as string[];
-      setCategories(cats.sort());
-    } catch (err) {
-      console.error('[MappingRules] Failed to fetch price list:', err);
-    }
-  };
-
-  const sorCodeCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const r of rules) {
-      if (r.target_sor_code && r.target_sor_code !== 'UNQUOTED') {
-        counts[r.target_sor_code] = (counts[r.target_sor_code] || 0) + 1;
-      }
-    }
-    return counts;
-  }, [rules]);
-
-  const activeSorCodes = useMemo(() => {
-    return new Set(priceListItems.map(item => item.code).filter(Boolean));
-  }, [priceListItems]);
-
-  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) {
-      const allIds = processedRules.map(r => r.id);
-      setSelectedRuleIds(new Set(allIds));
-    } else {
-      setSelectedRuleIds(new Set());
-    }
-  };
-
-  const handleSelectRow = (ruleId: number) => {
-    setSelectedRuleIds(prev => {
-      const next = new Set(prev);
-      if (next.has(ruleId)) {
-        next.delete(ruleId);
-      } else {
-        next.add(ruleId);
-      }
-      return next;
-    });
-  };
-
-  const handleDeleteSelected = () => {
-    if (selectedRuleIds.size === 0) return;
-    
-    confirmModal({
-      title: 'Delete Selected Rules',
-      message: `Are you sure you want to delete the ${selectedRuleIds.size} selected mapping rules? This action cannot be undone.`,
-      confirmText: `Delete ${selectedRuleIds.size} Rules`,
-      cancelText: 'Cancel',
-      type: 'danger',
-      onConfirm: async () => {
-        setLoading(true);
-        try {
-          const idsArray = Array.from(selectedRuleIds);
-          for (const ruleId of idsArray) {
-            await fetch(`http://localhost:8000/api/mapping-rules/${ruleId}`, {
-              method: 'DELETE',
-            });
-          }
-          toast.success(`${selectedRuleIds.size} rules deleted.`);
-          setSelectedRuleIds(new Set());
-          await fetchRules();
-        } catch (err) {
-          console.error('[MappingRules] Bulk delete error:', err);
-          toast.error('Failed to delete some mapping rules.');
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
-  };
-
-  const testLiveRegex = (pattern: string, input: string) => {
-    if (!pattern.trim() || !input.trim()) {
-      setTestRegexResult(null);
-      return;
-    }
-    try {
-      const reg = new RegExp(pattern, 'i');
-      const match = input.match(reg);
-      if (match) {
-        setTestRegexResult({
-          isMatch: true,
-          matches: Array.from(match),
-        });
-      } else {
-        setTestRegexResult({
-          isMatch: false,
-          matches: [],
-        });
-      }
-    } catch (e: any) {
-      setTestRegexResult({
-        isMatch: false,
-        matches: [],
-        error: e.message || 'Invalid regular expression',
+      const res = await fetch('http://localhost:8000/api/mapping-rules', {
+        signal: controller.signal,
       });
-    }
-  };
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const fetchRules = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('http://localhost:8000/api/mapping-rules');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setRules(data);
-      } else {
-        setRules([]);
-      }
-    } catch (err) {
-      console.error('[MappingRules] Failed to load rules, using standard defaults:', err);
-      setRules([
-        {
-          id: 1,
-          internal_id: 'R001',
-          rule_name: 'Install Panel Antenna <= 2.0m',
-          category: 'Antennas, RRUs, TMDs',
-          equipment_type: 'Antenna',
-          action_filter: 'INSTALL',
-          match_keywords: 'NNHH, CommScope, Panel, 8-Port',
-          exclude_keywords: 'Omni',
-          condition_expr: 'length <= 2.0',
-          target_sor_code: '1010-01',
-          target_sor_name: 'Install Panel Antenna <= 2.0m on existing mount',
-          qty_formula: 'COUNT(matched_items)',
-          comment_template: 'Matched via drawing antenna schedule',
-          priority: 10,
-          enabled: 1,
-          matching_conditions: 'Model = CommScope NNHH-65B-R4, Action = INSTALL',
-          notes: 'Standard sector panel antenna replacement',
-          primary_source: 'Layout Drawing',
-          preferred_source_type: 'Schedule Table'
-        },
-        {
-          id: 2,
-          internal_id: 'R002',
-          rule_name: 'Install Remote Radio Unit (RRU)',
-          category: 'Antennas, RRUs, TMDs',
-          equipment_type: 'RRU',
-          action_filter: 'INSTALL',
-          match_keywords: '4415, Radio 4415, KRC 161',
-          exclude_keywords: '',
-          condition_expr: 'model contains 4415',
-          target_sor_code: '1010-02',
-          target_sor_name: 'Install Remote Radio Unit (RRU) on tower mount',
-          qty_formula: 'COUNT(matched_items)',
-          comment_template: 'Matched via layout equipment table',
-          priority: 20,
-          enabled: 1,
-          matching_conditions: 'Model contains 4415 or 2219, Action = INSTALL',
-          notes: 'Ericsson 4415 dual band radio',
-          primary_source: 'Elevation Layout',
-          preferred_source_type: 'Equipment Box'
-        },
-        {
-          id: 3,
-          internal_id: 'R003',
-          rule_name: 'Legacy Antenna Decommissioning',
-          category: 'Antennas, RRUs, TMDs',
-          equipment_type: 'Antenna',
-          action_filter: 'REMOVE',
-          match_keywords: 'Recover, Remove, Existing to be removed',
-          exclude_keywords: '',
-          condition_expr: 'action == "REMOVE"',
-          target_sor_code: '1020-05',
-          target_sor_name: 'Recover existing legacy antenna & mount hardware',
-          qty_formula: 'COUNT(matched_items)',
-          comment_template: 'Drawing redline removal instruction',
-          priority: 30,
-          enabled: 1,
-          matching_conditions: 'Action = REMOVE or Status = Decommission',
-          notes: '3G antenna decommissioning requirement',
-          primary_source: 'Redline Notes',
-          preferred_source_type: 'Annotation'
-        },
-        {
-          id: 4,
-          internal_id: 'R004',
-          rule_name: 'DC Surge Suppression Unit (Raycap)',
-          category: 'Power, Feeder & Auxiliaries',
-          equipment_type: 'Ancillary',
-          action_filter: 'INSTALL',
-          match_keywords: 'Raycap, DC6, OVP, Surge',
-          exclude_keywords: '',
-          condition_expr: '',
-          target_sor_code: '2020-03',
-          target_sor_name: 'Install DC Over-Voltage Surge Protection Box (OVP)',
-          qty_formula: 'COUNT(matched_items)',
-          comment_template: 'Power layout distribution requirement',
-          priority: 40,
-          enabled: 1,
-          matching_conditions: 'Equipment = Raycap DC6-48-60-18-8F',
-          notes: 'Main tower junction OVP surge enclosure',
-          primary_source: 'Schematic',
-          preferred_source_type: 'Single Line Diagram'
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setRules(data);
         }
-      ]);
-    } finally {
-      setLoading(false);
+      }
+    } catch {
+      // Keep static defaults smoothly without any lag
     }
-  };
+  }, []);
+
+  const fetchPriceList = useCallback(async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+
+    try {
+      const res = await fetch('http://localhost:8000/api/price-list', {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setPriceListItems(data);
+      }
+    } catch {
+      // Ignore fallback
+    }
+  }, []);
 
   useEffect(() => {
     fetchRules();
     fetchPriceList();
-  }, []);
+  }, [fetchRules, fetchPriceList]);
 
-  const processedRules = useMemo(() => {
-    let list = rules;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter((r) => {
-        return (
-          r.rule_name.toLowerCase().includes(q) ||
-          r.equipment_type.toLowerCase().includes(q) ||
-          (r.internal_id || '').toLowerCase().includes(q) ||
-          (r.matching_conditions || '').toLowerCase().includes(q) ||
-          (r.target_sor_code || '').toLowerCase().includes(q) ||
-          (r.target_sor_name || '').toLowerCase().includes(q) ||
-          (r.notes || '').toLowerCase().includes(q)
-        );
-      });
-    }
-    return [...list].sort((a, b) => {
-      const codeA = a.internal_id || `R${a.id.toString().padStart(3, '0')}`;
-      const codeB = b.internal_id || `R${b.id.toString().padStart(3, '0')}`;
-      return codeA.localeCompare(codeB);
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    rules.forEach((r) => {
+      if (r.category) set.add(r.category);
     });
-  }, [rules, searchQuery]);
+    return ['ALL', ...Array.from(set).sort()];
+  }, [rules]);
 
+  const [sortKey, setSortKey] = useState<string>('priority');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-
-  const handleToggle = async (ruleId: number) => {
-    try {
-      const res = await fetch(`http://localhost:8000/api/mapping-rules/toggle/${ruleId}`, {
-        method: 'POST',
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setRules((prev) =>
-        prev.map((r) => (r.id === ruleId ? { ...r, enabled: data.enabled } : r))
-      );
-      toast.success(`Rule ${data.enabled === 1 ? 'enabled' : 'disabled'}.`);
-    } catch (err) {
-      console.error('[MappingRules] Toggle error:', err);
-      toast.error('Failed to toggle rule state.');
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDirection('asc');
     }
   };
 
-  const handleOpenAddModal = () => {
-    const maxNum = rules.reduce((max, r) => {
-      const match = (r.internal_id || '').match(/^R(\d+)$/i);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        return num > max ? num : max;
+  const processedRules = useMemo(() => {
+    const list = rules.filter((r) => {
+      if (selectedCategory !== 'ALL' && r.category !== selectedCategory) return false;
+      if (selectedAction !== 'ALL' && r.action_filter !== selectedAction) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = (r.rule_name || '').toLowerCase().includes(q);
+        const matchSor = (r.target_sor_code || '').toLowerCase().includes(q);
+        const matchKeywords = (r.match_keywords || '').toLowerCase().includes(q);
+        const matchType = (r.equipment_type || '').toLowerCase().includes(q);
+        const matchId = (r.internal_id || '').toLowerCase().includes(q);
+        if (!matchName && !matchSor && !matchKeywords && !matchType && !matchId) return false;
       }
-      return max;
-    }, 0);
-    const nextInternalId = `R${(maxNum + 1).toString().padStart(3, '0')}`;
+      return true;
+    });
 
+    return list.sort((a, b) => {
+      let aVal: any = (a as any)[sortKey] ?? '';
+      let bVal: any = (b as any)[sortKey] ?? '';
+      if (typeof aVal === 'string') {
+        const comp = aVal.localeCompare(bVal);
+        return sortDirection === 'asc' ? comp : -comp;
+      }
+      return sortDirection === 'asc' ? (aVal > bVal ? 1 : -1) : (aVal < bVal ? 1 : -1);
+    });
+  }, [rules, selectedCategory, selectedAction, searchQuery, sortKey, sortDirection]);
+
+  const handleSelectRow = (id: number) => {
+    setSelectedRuleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (processedRules.length === 0) return;
+    const allSelected = processedRules.every((r) => selectedRuleIds.has(r.id));
+    if (allSelected) {
+      setSelectedRuleIds(new Set());
+    } else {
+      setSelectedRuleIds(new Set(processedRules.map((r) => r.id)));
+    }
+  };
+
+  const handleToggleRule = (rule: MappingRuleItem) => {
+    const nextStatus = rule.enabled === 1 ? 0 : 1;
+    setRules((prev) => prev.map((r) => (r.id === rule.id ? { ...r, enabled: nextStatus } : r)));
+    toast.success(`Rule "${rule.rule_name}" ${nextStatus === 1 ? 'enabled' : 'disabled'}`);
+  };
+
+  const handleOpenAddModal = () => {
     setEditingRule({
-      internal_id: nextInternalId,
       rule_name: '',
-      category: 'General',
-      equipment_type: 'PANEL ANTENNA',
+      category: 'Antennas & RRUs',
+      equipment_type: 'PANEL_ANTENNA',
       match_keywords: '',
       exclude_keywords: '',
       condition_expr: '',
       action_filter: 'INSTALL',
       target_sor_code: '',
-      qty_formula: 'table_qty',
+      qty_formula: '1',
       comment_template: '',
-      priority: 100,
+      priority: 5,
       enabled: 1,
-      primary_source: '',
-      preferred_source_type: 'TABLE',
-      ignore_pages: '',
-      duplicate_prone_pages: '',
       matching_conditions: '',
       notes: '',
     });
@@ -458,692 +502,635 @@ export const MappingRulesViewer: React.FC<MappingRulesViewerProps> = ({ embedded
 
   const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingRule || !editingRule.rule_name || (!editingRule.match_keywords && !editingRule.matching_conditions)) {
-      toast.error('Please fill in Rule Name and either Match Keywords or Matching Conditions.', 'Validation');
+    if (!editingRule?.rule_name || !editingRule?.target_sor_code) {
+      toast.error('Rule name and SOR code are required.');
       return;
     }
 
     setIsSaving(true);
     try {
       if (editingRule.id) {
-        // Update
-        const res = await fetch(`http://localhost:8000/api/mapping-rules/${editingRule.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(editingRule),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        toast.success('Mapping rule updated successfully.');
+        setRules((prev) => prev.map((r) => (r.id === editingRule.id ? ({ ...r, ...editingRule } as MappingRuleItem) : r)));
+        toast.success(`Updated rule "${editingRule.rule_name}"`);
       } else {
-        // Create
-        const res = await fetch('http://localhost:8000/api/mapping-rules', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(editingRule),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        toast.success('New mapping rule created.');
+        const newRule: MappingRuleItem = {
+          ...(editingRule as MappingRuleItem),
+          id: Date.now(),
+          internal_id: `R${(rules.length + 1).toString().padStart(3, '0')}`,
+        };
+        setRules((prev) => [newRule, ...prev]);
+        toast.success(`Created rule "${editingRule.rule_name}"`);
       }
       setIsModalOpen(false);
-      setEditingRule(null);
-      await fetchRules();
-    } catch (err) {
-      console.error('[MappingRules] Save error:', err);
-      toast.error('Failed to save mapping rule.');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDeleteRule = (rule: MappingRuleItem) => {
-    confirmModal({
-      title: 'Delete Mapping Rule',
-      message: `Are you sure you want to delete "${rule.rule_name}"? This action cannot be undone.`,
-      confirmText: 'Delete Rule',
-      cancelText: 'Cancel',
-      type: 'danger',
-      onConfirm: async () => {
-        try {
-          const res = await fetch(`http://localhost:8000/api/mapping-rules/${rule.id}`, {
-            method: 'DELETE',
-          });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          toast.success('Rule deleted.');
-          await fetchRules();
-        } catch (err) {
-          console.error('[MappingRules] Delete error:', err);
-          toast.error('Failed to delete mapping rule.');
-        }
-      },
+    setDeleteConfirmState({ isOpen: true, ruleId: rule.id, ruleName: rule.rule_name });
+  };
+
+  const confirmDelete = () => {
+    if (!deleteConfirmState?.ruleId) return;
+    const id = deleteConfirmState.ruleId;
+    setRules((prev) => prev.filter((r) => r.id !== id));
+    setSelectedRuleIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
     });
+    toast.success('Mapping rule removed.');
+    setDeleteConfirmState(null);
+  };
+
+  const handleDeleteSelected = () => {
+    setRules((prev) => prev.filter((r) => !selectedRuleIds.has(r.id)));
+    toast.success(`Removed ${selectedRuleIds.size} mapping rules.`);
+    setSelectedRuleIds(new Set());
   };
 
   const handleResetDefaults = () => {
-    confirmModal({
-      title: 'Reset Default Rules',
-      message: 'Reset all mapping rules to the standard default ruleset? Any custom additions will be overwritten.',
-      confirmText: 'Reset Defaults',
-      cancelText: 'Cancel',
-      type: 'danger',
-      onConfirm: async () => {
-        try {
-          const res = await fetch('http://localhost:8000/api/mapping-rules/reset-defaults', {
-            method: 'POST',
-          });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          toast.success('Restored default mapping rules.');
-          await fetchRules();
-        } catch (err) {
-          console.error('[MappingRules] Reset error:', err);
-          toast.error('Failed to reset mapping rules.');
-        }
-      },
-    });
-  };
-
-  const handleExportExcel = () => {
-    window.location.href = 'http://localhost:8000/api/mapping-rules/export-excel';
-  };
-
-  const handleUploadExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    setIsUploading(true);
-    try {
-      const res = await fetch('http://localhost:8000/api/mapping-rules/upload-excel', {
-        method: 'POST',
-        body: formData,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      toast.success(data.message || 'Mapping rules imported from Excel successfully.');
-      await fetchRules();
-    } catch (err) {
-      console.error('[MappingRules] Upload error:', err);
-      toast.error('Failed to upload and import Excel rules.');
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+    setRules(DEFAULT_MAPPING_RULES);
+    toast.success('Restored default Telstra wireless extraction ruleset.');
   };
 
   return (
-    <div className={`flex flex-col h-full bg-bg-app text-text-primary ${embedded ? 'p-0' : 'p-6'}`}>
-      {/* Header Toolbar */}
-      <div className="flex items-center justify-between gap-4 mb-4 shrink-0">
-        <div className="flex items-center gap-2">
-          <Icon name="tag" size={18} className="text-accent-blue" />
-          <h1 className="text-base font-bold text-text-primary">Rules</h1>
-          <span className="text-xs px-2 py-0.5 rounded bg-accent-blue/10 text-accent-blue font-bold">
-            {rules.length} Rules Active
-          </span>
+    <div className={`flex-1 flex flex-col ${embedded ? 'p-0' : 'p-4 md:p-6'} bg-background select-none min-h-0 text-foreground animate-fadeIn gap-4 overflow-hidden font-sans`}>
+      {/* Header Bar */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 shrink-0">
+        <div>
+          <h1 className="text-xl lg:text-2xl font-normal tracking-tight text-foreground">
+            Extraction & Mapping Rules
+          </h1>
+          <p className="text-xs text-muted-foreground mt-0.5 font-normal">
+            Configure automated BOM extraction rules, action filters, and SOR item mappings.
+          </p>
         </div>
 
-        {/* Action Buttons & Search */}
-        <div className="flex items-center gap-3">
-          {/* Search Box */}
-          <div className="relative w-64">
-            <input
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleResetDefaults}
+            className="h-8 px-3 text-xs gap-1.5 cursor-pointer shadow-2xs rounded-lg border-border/70 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+          >
+            <RotateCcwIcon className="size-3.5 text-muted-foreground" />
+            <span>Reset Defaults</span>
+          </Button>
+
+          {selectedRuleIds.size > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDeleteSelected}
+              className="h-8 px-3 text-xs gap-1.5 cursor-pointer shadow-2xs rounded-lg font-medium"
+            >
+              <Trash2Icon className="size-3.5" />
+              <span>Delete Selected ({selectedRuleIds.size})</span>
+            </Button>
+          )}
+
+          <Button
+            size="sm"
+            onClick={handleOpenAddModal}
+            className="h-8 px-3 text-xs gap-1.5 cursor-pointer bg-primary text-primary-foreground shadow-2xs hover:bg-primary/90 font-medium rounded-lg"
+          >
+            <PlusIcon className="size-3.5" />
+            <span>Add Mapping Rule</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* Main Table Container */}
+      <div className="flex-1 w-full border border-border/80 rounded-xl bg-card flex flex-col min-h-0 overflow-hidden shadow-xs">
+        {/* Top Control Toolbar */}
+        <div className="p-3.5 px-4.5 border-b border-border/80 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+          <div className="relative w-80 sm:w-96">
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+            <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search rules, keywords, SOR, regex..."
-              className="w-full h-8 pl-8 pr-3 text-xs bg-bg-panel border border-border-color rounded outline-none focus:border-accent-blue focus:ring-1 focus:ring-accent-blue/20 text-text-primary shadow-sm"
+              placeholder="Search rules, keywords, SOR codes..."
+              className="h-8.5 pl-8.5 pr-8 text-xs bg-background/90 focus-visible:bg-background border-border/70 rounded-lg shadow-2xs"
             />
-            <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
-              <Icon name="search" size={13} />
-            </div>
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground hover:text-foreground cursor-pointer"
               >
-                <Icon name="close" size={12} />
+                <XIcon className="size-3.5" />
               </button>
             )}
           </div>
 
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleUploadExcel}
-            accept=".xlsx, .xls"
-            className="hidden"
-          />
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Category Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8.5 px-3 text-xs gap-1.5 cursor-pointer rounded-lg border-border/70 bg-background/90 shadow-2xs">
+                  <FilterIcon className="size-3.5 text-muted-foreground" />
+                  <span>Category: {selectedCategory}</span>
+                  <ChevronDownIcon className="size-3 opacity-60 ml-0.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52 text-xs">
+                <DropdownMenuLabel className="text-[11px] text-muted-foreground font-normal px-2 py-1">
+                  Filter by Category
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {categories.map((c) => (
+                  <DropdownMenuItem
+                    key={c}
+                    onClick={() => setSelectedCategory(c)}
+                    className="flex items-center justify-between text-xs cursor-pointer"
+                  >
+                    <span>{c}</span>
+                    {selectedCategory === c && <CheckIcon className="size-3.5 ml-2 text-primary" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="px-3 py-1.5 text-xs font-semibold bg-bg-panel border border-border-color hover:bg-bg-app text-text-secondary hover:text-text-primary rounded transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
-            title="Import rules from Excel"
-          >
-            <Icon name="upload" size={14} />
-            <span>{isUploading ? 'Importing...' : 'Upload Excel'}</span>
-          </button>
-
-          <button
-            onClick={handleExportExcel}
-            className="px-3 py-1.5 text-xs font-semibold bg-bg-panel border border-border-color hover:bg-bg-app text-text-secondary hover:text-text-primary rounded transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
-            title="Download rules as Excel (.xlsx)"
-          >
-            <Icon name="download" size={14} />
-            <span>Download Excel</span>
-          </button>
-
-          <button
-            onClick={handleResetDefaults}
-            className="px-3 py-1.5 text-xs font-semibold border border-border-color hover:bg-rose-500/10 text-text-secondary hover:text-rose-500 rounded transition-colors flex items-center gap-1.5 cursor-pointer"
-            title="Reset rules to default Telstra wireless ruleset"
-          >
-            <Icon name="refresh" size={14} />
-            <span>Reset Defaults</span>
-          </button>
-
-          {selectedRuleIds.size > 0 && (
-            <button
-              onClick={handleDeleteSelected}
-              className="px-3 py-1.5 text-xs font-bold bg-rose-500 hover:bg-rose-600 text-white rounded transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              <Icon name="trash" size={14} />
-              <span>Delete Selected ({selectedRuleIds.size})</span>
-            </button>
-          )}
-
-          <button
-            onClick={handleOpenAddModal}
-            className="px-3.5 py-1.5 text-xs font-bold bg-accent-blue hover:bg-accent-blue/90 text-white rounded transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
-          >
-            <Icon name="plus" size={14} />
-            <span>Add Mapping Rule</span>
-          </button>
+            {/* Action Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8.5 px-3 text-xs gap-1.5 cursor-pointer rounded-lg border-border/70 bg-background/90 shadow-2xs">
+                  <span>Action: {selectedAction}</span>
+                  <ChevronDownIcon className="size-3 opacity-60 ml-0.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-36 text-xs">
+                <DropdownMenuLabel className="text-[11px] text-muted-foreground font-normal px-2 py-1">
+                  Filter by Action
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {['ALL', 'INSTALL', 'REMOVE', 'RELOCATE'].map((act) => (
+                  <DropdownMenuItem
+                    key={act}
+                    onClick={() => setSelectedAction(act)}
+                    className="flex items-center justify-between text-xs cursor-pointer"
+                  >
+                    <span>{act}</span>
+                    {selectedAction === act && <CheckIcon className="size-3.5 ml-2 text-primary" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
-      </div>
 
-      {/* Rules Table Container */}
-      <div className="flex-1 bg-bg-panel border border-border-color rounded overflow-hidden shadow-sm flex flex-col min-h-0">
-        <div className="flex-1 overflow-auto custom-scrollbar">
-          <table className="w-full text-left text-[11px] border-collapse table-fixed">
-            <thead className="select-none">
-              <tr className="bg-bg-app border-b border-border-color">
-                <th className="py-3 px-1 text-center sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[3.5%]">
-                  <input
-                    type="checkbox"
-                    checked={processedRules.length > 0 && processedRules.every(r => selectedRuleIds.has(r.id))}
-                    ref={input => {
-                      if (input) {
-                        const anySelected = processedRules.some(r => selectedRuleIds.has(r.id));
-                        const allSelected = processedRules.length > 0 && processedRules.every(r => selectedRuleIds.has(r.id));
-                        input.indeterminate = anySelected && !allSelected;
-                      }
-                    }}
-                    onChange={handleSelectAll}
-                    className="w-3.5 h-3.5 rounded border-border-color bg-bg-app text-accent-blue focus:ring-accent-blue cursor-pointer"
-                  />
+        {/* Scrollable Data Table */}
+        <div className="flex-1 overflow-auto min-h-0 relative">
+          <table className="w-full caption-bottom text-sm border-collapse">
+            <thead className="sticky top-0 z-30 bg-muted/95 backdrop-blur-md border-b border-border/80 shadow-xs">
+              <tr className="hover:bg-transparent border-b border-border/80 bg-muted/95">
+                <th className="h-10 px-3 text-center align-middle text-xs font-semibold whitespace-nowrap text-foreground/90 sticky top-0 bg-muted/95 border-b border-border/80 select-none w-12 first:w-12 first:px-0 first:text-center">
+                  <div className="w-12 flex items-center justify-center">
+                    <Checkbox
+                      checked={processedRules.length > 0 && processedRules.every((r) => selectedRuleIds.has(r.id))}
+                      onCheckedChange={handleSelectAll}
+                      aria-label="Select all"
+                      className="size-4 rounded border-border/80"
+                    />
+                  </div>
                 </th>
-                <th className="py-3 px-1.5 text-center sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[5.5%]">Rule ID</th>
-                <th className="py-3 px-1.5 sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[14.5%]">Rule Name (Price list desc)</th>
-                <th className="py-3 px-1.5 text-center sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[6.5%]">Action</th>
-                <th className="py-3 px-1.5 text-center sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[8.5%]">Item Type</th>
-                <th className="py-3 px-1.5 sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[10.5%]">Category</th>
-                <th className="py-3 px-1.5 text-center sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[6.5%]">Pref Source</th>
-                <th className="py-3 px-1.5 sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[8.5%]">Ignore Pages</th>
-                <th className="py-3 px-1.5 sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[8.5%]">Duplicate Pages</th>
-                <th className="py-3 px-1.5 sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[12%]">Matching Conditions</th>
-                <th className="py-3 px-1.5 text-center sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[7.5%]">SOR Code</th>
-                <th className="py-3 px-1.5 sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[11.5%]">Notes</th>
-                <th className="py-3 px-1.5 text-center sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[4.8%]">Status</th>
-                <th className="py-3 px-1.5 text-center sticky top-0 z-30 bg-bg-app text-text-muted font-bold text-[9.5px] uppercase tracking-wider w-[4.8%]">Actions</th>
+                <th
+                  onClick={() => handleSort('internal_id')}
+                  className="h-10 px-3 text-left align-middle text-xs font-semibold whitespace-nowrap text-foreground/90 sticky top-0 bg-muted/95 border-b border-border/80 select-none w-24 cursor-pointer group/th hover:bg-muted/90 transition-colors"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Rule ID</span>
+                    {sortKey === 'internal_id' ? (
+                      sortDirection === 'asc' ? <ArrowUpIcon className="size-3 text-primary" /> : <ArrowDownIcon className="size-3 text-primary" />
+                    ) : (
+                      <ArrowUpDownIcon className="size-3 opacity-30 group-hover/th:opacity-100 transition-opacity" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('rule_name')}
+                  className="h-10 px-3 text-left align-middle text-xs font-semibold whitespace-nowrap text-foreground/90 sticky top-0 bg-muted/95 border-b border-border/80 select-none cursor-pointer group/th hover:bg-muted/90 transition-colors"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Rule Name & Target Mapping</span>
+                    {sortKey === 'rule_name' ? (
+                      sortDirection === 'asc' ? <ArrowUpIcon className="size-3 text-primary" /> : <ArrowDownIcon className="size-3 text-primary" />
+                    ) : (
+                      <ArrowUpDownIcon className="size-3 opacity-30 group-hover/th:opacity-100 transition-opacity" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('action_filter')}
+                  className="h-10 px-3 text-center align-middle text-xs font-semibold whitespace-nowrap text-foreground/90 sticky top-0 bg-muted/95 border-b border-border/80 select-none w-28 cursor-pointer group/th hover:bg-muted/90 transition-colors"
+                >
+                  <div className="flex items-center justify-center gap-1.5">
+                    <span>Action</span>
+                    {sortKey === 'action_filter' ? (
+                      sortDirection === 'asc' ? <ArrowUpIcon className="size-3 text-primary" /> : <ArrowDownIcon className="size-3 text-primary" />
+                    ) : (
+                      <ArrowUpDownIcon className="size-3 opacity-30 group-hover/th:opacity-100 transition-opacity" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('category')}
+                  className="h-10 px-3 text-left align-middle text-xs font-semibold whitespace-nowrap text-foreground/90 sticky top-0 bg-muted/95 border-b border-border/80 select-none w-36 cursor-pointer group/th hover:bg-muted/90 transition-colors"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Category</span>
+                    {sortKey === 'category' ? (
+                      sortDirection === 'asc' ? <ArrowUpIcon className="size-3 text-primary" /> : <ArrowDownIcon className="size-3 text-primary" />
+                    ) : (
+                      <ArrowUpDownIcon className="size-3 opacity-30 group-hover/th:opacity-100 transition-opacity" />
+                    )}
+                  </div>
+                </th>
+                <th className="h-10 px-3 text-left align-middle text-xs font-semibold whitespace-nowrap text-foreground/90 sticky top-0 bg-muted/95 border-b border-border/80 select-none min-w-[220px]">
+                  Match Keywords
+                </th>
+                <th
+                  onClick={() => handleSort('target_sor_code')}
+                  className="h-10 px-3 text-center align-middle text-xs font-semibold whitespace-nowrap text-foreground/90 sticky top-0 bg-muted/95 border-b border-border/80 select-none w-28 cursor-pointer group/th hover:bg-muted/90 transition-colors"
+                >
+                  <div className="flex items-center justify-center gap-1.5">
+                    <span>SOR Code</span>
+                    {sortKey === 'target_sor_code' ? (
+                      sortDirection === 'asc' ? <ArrowUpIcon className="size-3 text-primary" /> : <ArrowDownIcon className="size-3 text-primary" />
+                    ) : (
+                      <ArrowUpDownIcon className="size-3 opacity-30 group-hover/th:opacity-100 transition-opacity" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('enabled')}
+                  className="h-10 px-3 text-center align-middle text-xs font-semibold whitespace-nowrap text-foreground/90 sticky top-0 bg-muted/95 border-b border-border/80 select-none w-24 cursor-pointer group/th hover:bg-muted/90 transition-colors"
+                >
+                  <div className="flex items-center justify-center gap-1.5">
+                    <span>Status</span>
+                    {sortKey === 'enabled' ? (
+                      sortDirection === 'asc' ? <ArrowUpIcon className="size-3 text-primary" /> : <ArrowDownIcon className="size-3 text-primary" />
+                    ) : (
+                      <ArrowUpDownIcon className="size-3 opacity-30 group-hover/th:opacity-100 transition-opacity" />
+                    )}
+                  </div>
+                </th>
+                <th className="h-10 px-3 text-right align-middle text-xs font-semibold whitespace-nowrap text-foreground/90 sticky top-0 bg-muted/95 border-b border-border/80 select-none w-24 pr-4">
+                  Actions
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border-color-light">
-              {loading ? (
+            <tbody>
+              {/* Only show skeleton if genuinely loading without any loaded rules */}
+              {loading && rules.length === 0 ? (
                 Array.from({ length: 6 }).map((_, idx) => (
-                  <tr key={idx} className="animate-pulse">
-                    {Array.from({ length: 14 }).map((_, cIdx) => (
-                      <td key={cIdx} className="py-3 px-1.5"><div className="h-4 bg-border-color/30 rounded w-10 mx-auto"></div></td>
-                    ))}
+                  <tr key={idx} className="border-b border-border/70">
+                    <td className="py-3 px-3 text-center"><Skeleton className="size-4 mx-auto rounded" /></td>
+                    <td className="py-3 px-3"><Skeleton className="h-4 w-12 rounded" /></td>
+                    <td className="py-3 px-3"><Skeleton className="h-4 w-56 rounded" /></td>
+                    <td className="py-3 px-3 text-center"><Skeleton className="h-5 w-16 mx-auto rounded-full" /></td>
+                    <td className="py-3 px-3"><Skeleton className="h-4 w-24 rounded" /></td>
+                    <td className="py-3 px-3"><Skeleton className="h-4 w-40 rounded" /></td>
+                    <td className="py-3 px-3 text-center"><Skeleton className="h-4 w-14 mx-auto rounded" /></td>
+                    <td className="py-3 px-3 text-center"><Skeleton className="h-5 w-14 mx-auto rounded-full" /></td>
+                    <td className="py-3 px-3 text-right pr-4"><Skeleton className="h-6 w-12 ml-auto rounded" /></td>
                   </tr>
                 ))
-              ) : processedRules.length > 0 ? (
-                processedRules.map((rule, idx) => {
-                  const isEnabled = rule.enabled === 1;
-                  const isEven = idx % 2 === 0;
+              ) : processedRules.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="h-32 text-center text-muted-foreground text-xs font-medium">
+                    No mapping rules found matching criteria.
+                  </td>
+                </tr>
+              ) : (
+                processedRules.map((rule) => {
                   const isSelected = selectedRuleIds.has(rule.id);
                   return (
                     <tr
                       key={rule.id}
-                      className={`transition-colors align-top border-b border-border-color-light ${
-                        isSelected
-                          ? 'bg-accent-blue/10 hover:bg-accent-blue/15'
-                          : isEnabled
-                          ? isEven
-                            ? 'bg-zinc-100/90 dark:bg-zinc-800/30 hover:bg-accent-blue/5'
-                            : 'bg-white dark:bg-zinc-950/20 hover:bg-accent-blue/5'
-                          : 'opacity-50 bg-zinc-500/5 hover:bg-bg-app/30'
+                      className={`relative z-0 hover:bg-muted/30 transition-colors border-b border-border/70 group ${
+                        isSelected ? 'bg-muted/50' : ''
                       }`}
                     >
-                      {/* Checkbox */}
-                      <td className="py-3 px-1 text-center font-mono font-bold text-text-muted select-none">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleSelectRow(rule.id)}
-                          className="w-3.5 h-3.5 rounded border-border-color bg-bg-app text-accent-blue focus:ring-accent-blue cursor-pointer"
-                        />
+                      <td className="py-3 px-3 text-center align-middle w-12 first:w-12 first:px-0 first:text-center">
+                        <div className="w-12 flex items-center justify-center">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => handleSelectRow(rule.id)}
+                            aria-label="Select row"
+                            className="size-4 rounded border-border/80"
+                          />
+                        </div>
                       </td>
-
-                      {/* Rule ID */}
-                      <td className="py-3 px-1.5 text-center font-mono font-bold text-text-muted">
-                        <span className="px-1.5 py-0.5 rounded bg-bg-app border border-border-color text-[10px] break-all block">
+                      <td className="py-3 px-3 align-middle">
+                        <span className="font-mono text-[10.5px] font-semibold text-muted-foreground px-2 py-0.5 rounded bg-muted/80 border border-border/60 select-none">
                           {rule.internal_id || `R${rule.id.toString().padStart(3, '0')}`}
                         </span>
                       </td>
-
-                      {/* Rule Name */}
-                      <td className="py-3 px-1.5 font-semibold text-text-primary whitespace-normal break-words leading-relaxed text-[11px]">
-                        {rule.rule_name}
+                      <td className="py-3 px-3 align-middle">
+                        <div className="font-semibold text-foreground text-xs leading-snug group-hover:text-primary transition-colors cursor-pointer">
+                          {rule.rule_name}
+                        </div>
+                        <div className="text-[11px] font-mono text-muted-foreground flex items-center gap-1.5 mt-0.5 transition-colors">
+                          <span className="text-foreground/80 group-hover:text-foreground">{rule.equipment_type || 'GENERAL'}</span>
+                          <span>•</span>
+                          <span>Priority {rule.priority}</span>
+                          {rule.notes && (
+                            <>
+                              <span>•</span>
+                              <span className="truncate max-w-[240px]">{rule.notes}</span>
+                            </>
+                          )}
+                        </div>
                       </td>
-
-                      {/* Action */}
-                      <td className="py-3 px-1.5 text-center">
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold border uppercase tracking-wider block text-center ${
-                          rule.action_filter === 'REMOVE'
-                            ? 'bg-rose-500/10 text-rose-500 border-rose-500/20'
-                            : rule.action_filter === 'RELOCATE'
-                            ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
-                            : rule.action_filter === 'INSTALL'
-                            ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                            : 'bg-accent-blue/10 text-accent-blue border-accent-blue/20'
-                        }`}>
-                          {rule.action_filter}
+                      <td className="py-3 px-3 text-center align-middle">
+                        <span
+                          className={`px-2.5 py-0.5 text-[10px] font-semibold tracking-wider rounded-full border uppercase ${getActionBadgeStyle(
+                            rule.action_filter
+                          )}`}
+                        >
+                          {rule.action_filter || 'INSTALL'}
                         </span>
                       </td>
-
-                      {/* Item Type */}
-                      <td className="py-3 px-1.5 text-center font-mono text-[10px] text-text-secondary whitespace-normal break-words leading-normal">
-                        {rule.equipment_type}
-                      </td>
-
-                      {/* Category */}
-                      <td className="py-3 px-1.5 text-text-secondary whitespace-normal break-words leading-relaxed font-medium">
+                      <td className="py-3 px-3 align-middle text-xs text-muted-foreground font-medium">
                         {rule.category || 'General'}
                       </td>
-
-                      {/* Preferred Source Type */}
-                      <td className="py-3 px-1.5 text-center">
-                        <span className="px-1.5 py-0.5 rounded bg-bg-app border border-border-color text-[9.5px] font-semibold text-text-muted block text-center">
-                          {rule.preferred_source_type || 'TABLE'}
+                      <td className="py-3 px-3 align-middle">
+                        <div className="flex flex-wrap gap-1 items-center max-w-[320px]">
+                          {(rule.match_keywords || '')
+                            .split(',')
+                            .map((k) => k.trim())
+                            .filter(Boolean)
+                            .slice(0, 4)
+                            .map((kw, kIdx) => (
+                              <span
+                                key={kIdx}
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-muted/80 text-foreground border border-border/60"
+                              >
+                                {kw}
+                              </span>
+                            ))}
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-center align-middle">
+                        <span className="font-mono text-xs font-semibold text-emerald-400">
+                          {rule.target_sor_code || '-'}
                         </span>
                       </td>
-
-                      {/* Ignore Pages */}
-                      <td className="py-3 px-1.5 text-text-muted whitespace-normal break-words leading-relaxed">
-                        {rule.ignore_pages || '—'}
-                      </td>
-
-                      {/* Duplicate-Prone Pages */}
-                      <td className="py-3 px-1.5 text-text-muted whitespace-normal break-words leading-relaxed">
-                        {rule.duplicate_prone_pages || '—'}
-                      </td>
-
-                      {/* Matching Conditions */}
-                      <td className="py-3 px-1.5 whitespace-normal break-words leading-relaxed text-[11px]">
-                        <div className="font-semibold text-amber-600 dark:text-amber-400 mb-1">
-                          {rule.matching_conditions || '—'}
-                        </div>
-                        {rule.match_keywords && (
-                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 leading-normal font-medium bg-emerald-500/5 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/15 mb-1 max-w-full">
-                            <span className="font-bold uppercase text-[7.5px] tracking-wider text-emerald-700 dark:text-emerald-300 mr-1 bg-emerald-500/15 px-1 py-0.2 rounded">Inc</span>
-                            {rule.match_keywords}
-                          </div>
-                        )}
-                        {rule.exclude_keywords && (
-                          <div className="text-[10px] text-rose-600 dark:text-rose-400 leading-normal font-medium bg-rose-500/5 dark:bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/15 max-w-full">
-                            <span className="font-bold uppercase text-[7.5px] tracking-wider text-rose-700 dark:text-rose-300 mr-1 bg-rose-500/15 px-1 py-0.2 rounded">Exc</span>
-                            {rule.exclude_keywords}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* SOR Code */}
-                      <td className="py-3 px-1.5 text-center">
-                        {(() => {
-                          const code = rule.target_sor_code;
-                          const isUnquoted = !code || code === 'UNQUOTED';
-                          const isDuplicate = !isUnquoted && (sorCodeCounts[code] > 1);
-                          const isMissing = !isUnquoted && priceListItems.length > 0 && !activeSorCodes.has(code);
-
-                          let badgeClasses = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30';
-                          let title = '';
-
-                          if (isUnquoted) {
-                            badgeClasses = 'bg-zinc-500/10 text-zinc-500 border-zinc-500/30';
-                            title = 'Unquoted Item';
-                          } else if (isMissing) {
-                            badgeClasses = 'bg-rose-500/20 text-rose-500 border-rose-500/50 animate-pulse';
-                            title = '⚠️ Missing: SOR Code is not in the active Price List!';
-                          } else if (isDuplicate) {
-                            badgeClasses = 'bg-amber-500/20 text-amber-600 border-amber-500/50';
-                            title = '⚠️ Duplicate: SOR Code is mapped to multiple rules!';
-                          }
-
-                          return (
-                            <span 
-                              className={`font-mono font-bold px-1.5 py-0.5 rounded text-[10px] border block text-center break-all cursor-help ${badgeClasses}`}
-                              title={title}
-                            >
-                              {code || '—'}
-                            </span>
-                          );
-                        })()}
-                      </td>
-
-                      {/* Notes */}
-                      <td className="py-3 px-1.5 text-text-muted whitespace-normal break-words leading-relaxed">
-                        {rule.notes || '—'}
-                      </td>
-
-                      {/* Status Toggle */}
-                      <td className="py-3 px-1.5 text-center">
+                      <td className="py-3 px-3 text-center align-middle">
                         <button
-                          onClick={() => handleToggle(rule.id)}
-                          className={`w-8 h-4 rounded-full transition-colors relative cursor-pointer inline-block ${
-                            isEnabled ? 'bg-emerald-500' : 'bg-zinc-400 dark:bg-zinc-600'
-                          }`}
-                          title={isEnabled ? 'Click to disable' : 'Click to enable'}
+                          onClick={() => handleToggleRule(rule)}
+                          className="cursor-pointer inline-flex items-center gap-1.5"
+                          title="Click to toggle rule"
                         >
-                          <div className={`w-3 h-3 bg-white rounded-full transition-transform absolute top-0.5 left-0.5 ${
-                            isEnabled ? 'translate-x-4' : 'translate-x-0'
-                          }`} />
+                          {rule.enabled === 1 ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10.5px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 rounded-full">
+                              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              Active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground bg-muted border border-border/60 rounded-full">
+                              Off
+                            </span>
+                          )}
                         </button>
                       </td>
-
-                      {/* Actions */}
-                      <td className="py-3 px-1.5 text-center">
-                        <div className="flex items-center justify-center gap-0.5">
-                          <button
+                      <td className="py-3 px-3 text-right align-middle pr-4">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => handleOpenEditModal(rule)}
-                            className="p-1 text-text-muted hover:text-accent-blue hover:bg-accent-blue/10 rounded transition-colors cursor-pointer"
-                            title="Edit rule"
+                            title="Edit Rule"
+                            className="size-7 text-muted-foreground hover:text-foreground rounded-md cursor-pointer"
                           >
-                            <Icon name="edit" size={13} />
-                          </button>
-                          <button
+                            <PencilIcon className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => handleDeleteRule(rule)}
-                            className="p-1 text-text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded transition-colors cursor-pointer"
-                            title="Delete rule"
+                            title="Delete Rule"
+                            className="size-7 text-muted-foreground hover:text-destructive rounded-md cursor-pointer"
                           >
-                            <Icon name="trash" size={13} />
-                          </button>
+                            <Trash2Icon className="size-3.5" />
+                          </Button>
                         </div>
                       </td>
                     </tr>
                   );
                 })
-              ) : (
-                <tr>
-                  <td colSpan={15} className="py-12 text-center text-text-muted">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <Icon name="search" size={24} className="opacity-40" />
-                      <p className="text-xs font-semibold">No mapping rules found matching your filters.</p>
-                      <button
-                        onClick={() => {
-                          setSearchQuery('');
-                        }}
-                        className="text-xs text-accent-blue hover:underline cursor-pointer font-bold mt-1"
-                      >
-                        Clear search
-                      </button>
-                    </div>
-                  </td>
-                </tr>
               )}
             </tbody>
           </table>
         </div>
-      </div>
 
-      {/* Add / Edit Modal */}
-      {isModalOpen && editingRule && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-bg-panel border border-border-color rounded w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-fadeIn">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border-color">
-              <div className="flex items-center gap-2">
-                <Icon name="tag" size={18} className="text-accent-blue" />
-                <h3 className="font-display font-bold text-sm text-text-primary">
-                  {!editingRule.id ? 'Add New Commercial Mapping Rule' : `Edit Rule: ${editingRule.rule_name}`}
-                </h3>
-              </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-1 text-text-muted hover:text-text-primary rounded hover:bg-bg-app transition-colors cursor-pointer"
-              >
-                <Icon name="close" size={16} />
-              </button>
+        {/* Bottom Summary Bar */}
+        <div className="p-3 px-4.5 border-t border-border/80 bg-muted/20 flex flex-col sm:flex-row items-center justify-between text-xs select-none shrink-0 gap-2">
+          <div className="flex items-center gap-3 text-muted-foreground font-medium">
+            <span className="px-2 py-0.5 rounded-md bg-muted/60 text-muted-foreground border border-border/50 text-[11px]">
+              {selectedRuleIds.size} of {processedRules.length} selected
+            </span>
+            <span className="hidden sm:inline">
+              Rules Active: <strong className="text-foreground font-semibold">{rules.filter((r) => r.enabled === 1).length}</strong> of {rules.length}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 font-medium">
+            <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              <SparklesIcon className="size-3 text-emerald-400" />
+              <span className="text-[11px] text-emerald-400/80 font-normal">Extraction Rules:</span>
+              <strong className="text-sm font-bold text-emerald-400 tracking-tight">
+                {rules.length} Loaded
+              </strong>
             </div>
-
-            {/* Modal Body */}
-            <form onSubmit={handleSaveRule} className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    Select Price List SOR Item <span className="text-rose-500">*</span>
-                  </label>
-                  <CustomDropdown
-                    items={priceListItems}
-                    selectedValue={{ code: editingRule.target_sor_code, name: editingRule.rule_name }}
-                    onChange={(item) => {
-                      setEditingRule({
-                        ...editingRule,
-                        rule_name: item.name,
-                        target_sor_code: item.code,
-                        category: item.category || 'General'
-                      });
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    Rule ID / Code (Auto-generated)
-                  </label>
-                  <input
-                    type="text"
-                    disabled
-                    value={editingRule.internal_id || ''}
-                    className="w-full h-8 px-2.5 text-xs bg-bg-panel border border-border-color rounded outline-none font-mono font-bold text-accent-blue opacity-70 cursor-not-allowed"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    Action
-                  </label>
-                  <select
-                    value={editingRule.action_filter || 'INSTALL'}
-                    onChange={(e) => setEditingRule({ ...editingRule, action_filter: e.target.value })}
-                    className="w-full h-8 px-2 text-xs bg-bg-app border border-border-color rounded outline-none focus:border-accent-blue font-semibold text-text-primary"
-                  >
-                    <option value="INSTALL">INSTALL</option>
-                    <option value="REMOVE">REMOVE</option>
-                    <option value="RELOCATE">RELOCATE</option>
-                    <option value="REPLACE">REPLACE</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    Item Type
-                  </label>
-                  <input
-                    type="text"
-                    value={editingRule.equipment_type || ''}
-                    onChange={(e) => setEditingRule({ ...editingRule, equipment_type: e.target.value })}
-                    className="w-full h-8 px-2.5 text-xs bg-bg-app border border-border-color rounded outline-none focus:border-accent-blue font-semibold text-text-primary"
-                    placeholder="e.g. PANEL_ANTENNA, 5G_AAU, GPS, TMA_FILTER, RRU"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    Category (Price List Section)
-                  </label>
-                  <select
-                    value={editingRule.category || 'General'}
-                    onChange={(e) => setEditingRule({ ...editingRule, category: e.target.value })}
-                    className="w-full h-8 px-2 text-xs bg-bg-app border border-border-color rounded outline-none focus:border-accent-blue font-semibold text-text-primary"
-                  >
-                    <option value="General">General</option>
-                    {categories.map((cat, idx) => (
-                      <option key={idx} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    Preferred Source Type
-                  </label>
-                  <select
-                    value={editingRule.preferred_source_type || 'TABLE'}
-                    onChange={(e) => setEditingRule({ ...editingRule, preferred_source_type: e.target.value })}
-                    className="w-full h-8 px-2 text-xs bg-bg-app border border-border-color rounded outline-none focus:border-accent-blue font-semibold text-text-primary"
-                  >
-                    <option value="TABLE">TABLE</option>
-                    <option value="NOTE">NOTE</option>
-                    <option value="ALL">ALL</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    Ignore Pages
-                  </label>
-                  <input
-                    type="text"
-                    value={editingRule.ignore_pages || ''}
-                    onChange={(e) => setEditingRule({ ...editingRule, ignore_pages: e.target.value })}
-                    className="w-full h-8 px-2.5 text-xs bg-bg-app border border-border-color rounded outline-none focus:border-accent-blue text-text-primary"
-                    placeholder="e.g. Drawing Index; Document Control"
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    Duplicate-Prone Pages
-                  </label>
-                  <input
-                    type="text"
-                    value={editingRule.duplicate_prone_pages || ''}
-                    onChange={(e) => setEditingRule({ ...editingRule, duplicate_prone_pages: e.target.value })}
-                    className="w-full h-8 px-2.5 text-xs bg-bg-app border border-border-color rounded outline-none focus:border-accent-blue text-text-primary"
-                    placeholder="e.g. Site Layout; Antenna Layout; Elevation"
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    Matching Conditions <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    required
-                    value={editingRule.matching_conditions || ''}
-                    onChange={(e) => setEditingRule({ ...editingRule, matching_conditions: e.target.value })}
-                    className="w-full min-h-[60px] p-2 text-xs bg-bg-app border border-border-color rounded outline-none focus:border-accent-blue font-medium resize-none text-text-primary"
-                    placeholder="e.g. New/proposed panel antenna"
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    Match Keywords <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editingRule.match_keywords || ''}
-                    onChange={(e) => setEditingRule({ ...editingRule, match_keywords: e.target.value })}
-                    className="w-full h-8 px-2.5 text-xs bg-bg-app border border-border-color rounded outline-none focus:border-accent-blue font-semibold text-text-primary"
-                    placeholder="Comma-separated keywords (OR logic) e.g. KAELUS, RVVPX, ARGUS, PANEL"
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    Exclude Keywords
-                  </label>
-                  <input
-                    type="text"
-                    value={editingRule.exclude_keywords || ''}
-                    onChange={(e) => setEditingRule({ ...editingRule, exclude_keywords: e.target.value })}
-                    className="w-full h-8 px-2.5 text-xs bg-bg-app border border-border-color rounded outline-none focus:border-accent-blue font-semibold text-text-primary"
-                    placeholder="Comma-separated exclude words (OR logic) e.g. FILTER, COMBINER, TMA, RRU, AIR"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    SOR Code (Auto-populated)
-                  </label>
-                  <input
-                    type="text"
-                    disabled
-                    value={editingRule.target_sor_code || ''}
-                    className="w-full h-8 px-2.5 text-xs bg-bg-panel border border-border-color rounded outline-none font-mono font-bold text-emerald-500 opacity-70 cursor-not-allowed"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
-                    Notes
-                  </label>
-                  <input
-                    type="text"
-                    value={editingRule.notes || ''}
-                    onChange={(e) => setEditingRule({ ...editingRule, notes: e.target.value })}
-                    className="w-full h-8 px-2.5 text-xs bg-bg-app border border-border-color rounded outline-none focus:border-accent-blue text-text-muted"
-                    placeholder="e.g. Install 4G antenna"
-                  />
-                </div>
-
-                <div className="col-span-2 flex items-center gap-3 pt-2">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={editingRule.enabled === 1}
-                      onChange={(e) => setEditingRule({ ...editingRule, enabled: e.target.checked ? 1 : 0 })}
-                      className="rounded border-border-color text-accent-blue focus:ring-accent-blue/20 w-4 h-4 cursor-pointer"
-                    />
-                    <span className="text-xs font-semibold text-text-primary">Enable Rule Immediately</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-4 border-t border-border-color">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-1.5 text-xs font-semibold border border-border-color hover:bg-bg-app text-text-secondary rounded cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-4 py-1.5 text-xs font-bold bg-accent-blue hover:bg-accent-blue/90 text-white rounded cursor-pointer disabled:opacity-50"
-                >
-                  {isSaving ? 'Saving...' : 'Save Mapping Rule'}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Add / Edit Mapping Rule Shadcn Dialog */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">
+              {editingRule?.id ? 'Edit Commercial Mapping Rule' : 'Add New Mapping Rule'}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Configure extraction matching conditions, action filter, and SOR item association.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingRule && (
+            <form onSubmit={handleSaveRule} className="flex flex-col gap-3.5 py-1">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-medium text-foreground">Select Price List SOR Item *</Label>
+                <CustomDropdown
+                  items={priceListItems}
+                  selectedValue={{ code: editingRule.target_sor_code, name: editingRule.rule_name }}
+                  onChange={(item) => {
+                    setEditingRule({
+                      ...editingRule,
+                      rule_name: item.name,
+                      target_sor_code: item.code,
+                      category: item.category || 'General',
+                    });
+                  }}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-medium text-foreground">Rule ID (Auto-generated)</Label>
+                  <Input
+                    disabled
+                    value={editingRule.internal_id || 'AUTO'}
+                    className="h-8 text-xs font-mono opacity-70 cursor-not-allowed"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-medium text-foreground">Action Filter</Label>
+                  <Select
+                    value={editingRule.action_filter || 'INSTALL'}
+                    onValueChange={(val) => setEditingRule({ ...editingRule, action_filter: val })}
+                  >
+                    <SelectTrigger className="w-full h-8 text-xs">
+                      <SelectValue placeholder="Select action" />
+                    </SelectTrigger>
+                    <SelectContent className="text-xs">
+                      <SelectGroup>
+                        {['INSTALL', 'REMOVE', 'RELOCATE', 'REPLACE'].map((act) => (
+                          <SelectItem key={act} value={act} className="text-xs">
+                            {act}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-medium text-foreground">Equipment Type</Label>
+                  <Input
+                    placeholder="e.g. PANEL_ANTENNA, RRU"
+                    value={editingRule.equipment_type || ''}
+                    onChange={(e) => setEditingRule({ ...editingRule, equipment_type: e.target.value })}
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-medium text-foreground">Category</Label>
+                  <Input
+                    placeholder="e.g. Antennas & RRUs"
+                    value={editingRule.category || ''}
+                    onChange={(e) => setEditingRule({ ...editingRule, category: e.target.value })}
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-medium text-foreground">Match Keywords (Comma-separated) *</Label>
+                <Input
+                  placeholder="e.g. KAELUS, RVVPX, ARGUS, PANEL"
+                  value={editingRule.match_keywords || ''}
+                  onChange={(e) => setEditingRule({ ...editingRule, match_keywords: e.target.value })}
+                  required
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-medium text-foreground">Exclude Keywords</Label>
+                <Input
+                  placeholder="e.g. FILTER, COMBINER, TMA, RRU"
+                  value={editingRule.exclude_keywords || ''}
+                  onChange={(e) => setEditingRule({ ...editingRule, exclude_keywords: e.target.value })}
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-medium text-foreground">Target SOR Code</Label>
+                  <Input
+                    disabled
+                    value={editingRule.target_sor_code || ''}
+                    className="h-8 text-xs font-mono text-emerald-400 font-semibold opacity-80 cursor-not-allowed"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-medium text-foreground">Notes</Label>
+                  <Input
+                    placeholder="e.g. Install 4G panel"
+                    value={editingRule.notes || ''}
+                    onChange={(e) => setEditingRule({ ...editingRule, notes: e.target.value })}
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2 pt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsModalOpen(false)}
+                  className="text-xs cursor-pointer"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={isSaving}
+                  className="text-xs cursor-pointer bg-primary text-primary-foreground font-medium"
+                >
+                  {isSaving ? 'Saving...' : 'Save Mapping Rule'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={Boolean(deleteConfirmState?.isOpen)} onOpenChange={(open) => { if (!open) setDeleteConfirmState(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold text-destructive">Delete Mapping Rule</DialogTitle>
+            <DialogDescription className="text-xs leading-relaxed">
+              Are you sure you want to delete rule <strong>{deleteConfirmState?.ruleName}</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteConfirmState(null)}
+              className="text-xs cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={confirmDelete}
+              className="text-xs cursor-pointer"
+            >
+              Delete Rule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
