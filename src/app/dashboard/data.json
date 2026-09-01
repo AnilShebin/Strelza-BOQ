@@ -1,0 +1,92 @@
+[
+  {
+    "id": 1,
+    "header": "E-201 Main Switchboard & Feeder Cable Takeoff",
+    "type": "Electrical",
+    "status": "Done",
+    "target": "184",
+    "limit": "99",
+    "reviewer": "Lead Estimator"
+  },
+  {
+    "id": 2,
+    "header": "M-101 Chilled Water Piping & AHU Distribution",
+    "type": "Mechanical",
+    "status": "Done",
+    "target": "246",
+    "limit": "98",
+    "reviewer": "Senior MEP QS"
+  },
+  {
+    "id": 3,
+    "header": "P-301 Sanitary Fixtures & Cold Water Supply",
+    "type": "Plumbing",
+    "status": "Done",
+    "target": "128",
+    "limit": "97",
+    "reviewer": "Lead Estimator"
+  },
+  {
+    "id": 4,
+    "header": "FP-401 Sprinkler Network & Deluge Valves",
+    "type": "Fire Protection",
+    "status": "Done",
+    "target": "92",
+    "limit": "99",
+    "reviewer": "Senior MEP QS"
+  },
+  {
+    "id": 5,
+    "header": "ELV-501 Fiber Optic Backbone & Server Rack Takeoff",
+    "type": "ELV & Telecom",
+    "status": "In Process",
+    "target": "165",
+    "limit": "96",
+    "reviewer": "Lead Estimator"
+  },
+  {
+    "id": 6,
+    "header": "C-601 Reinforced Concrete Footings & Ground Slab",
+    "type": "Civil & Structural",
+    "status": "In Process",
+    "target": "310",
+    "limit": "95",
+    "reviewer": "Civil QS Lead"
+  },
+  {
+    "id": 7,
+    "header": "A-701 Acoustic Ceiling Tiles & Gypsum Partitions",
+    "type": "Architectural",
+    "status": "Done",
+    "target": "420",
+    "limit": "98",
+    "reviewer": "Senior MEP QS"
+  },
+  {
+    "id": 8,
+    "header": "BMS-801 DDC Controllers & Flow Sensors",
+    "type": "Controls",
+    "status": "In Process",
+    "target": "78",
+    "limit": "94",
+    "reviewer": "Lead Estimator"
+  },
+  {
+    "id": 9,
+    "header": "E-202 Lighting Layout & Emergency Luminaires",
+    "type": "Electrical",
+    "status": "Done",
+    "target": "312",
+    "limit": "99",
+    "reviewer": "Lead Estimator"
+  },
+  {
+    "id": 10,
+    "header": "M-102 Supply & Return Air VAV Diffusers",
+    "type": "Mechanical",
+    "status": "Done",
+    "target": "194",
+    "limit": "97",
+    "reviewer": "Senior MEP QS"
+  }
+]
