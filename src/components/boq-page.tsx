@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
-import { AppSidebar } from '@/components/layout/AppSidebar';
+import { AppSidebar } from '@/components/app-sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { PDFViewer } from '@/components/pdf/PDFViewer';
 import { OverviewDashboard } from '@/components/dashboard/OverviewDashboard';
@@ -8,7 +8,6 @@ import { BOQDashboard } from '@/components/dashboard/BOQDashboard';
 import { MappingRulesViewer } from '@/components/mapping/MappingRulesViewer';
 import { EquipmentCatalogViewer } from '@/components/equipment/EquipmentCatalogViewer';
 import { SettingsView } from '@/components/settings/SettingsView';
-import { NotFoundPage } from '@/components/NotFoundPage';
 
 export interface PDFDoc {
   name: string;
@@ -329,7 +328,17 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
               }}
             />
           ) : (
-            <NotFoundPage onGoHome={() => setActiveTab('dashboard')} />
+            <OverviewDashboard
+              pdfName={activePdf?.name}
+              analyzedData={analyzedData}
+              analyzing={extracting}
+              onLoadPDF={handleLoadPDF}
+              onGenerateBOQ={() => setActiveTab('boq')}
+              onTabChange={setActiveTab}
+              extractedData={analyzedData}
+              extracting={extracting}
+              onStartExtraction={handleStartExtraction}
+            />
           )}
         </div>
       </SidebarInset>
