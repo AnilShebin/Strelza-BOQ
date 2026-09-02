@@ -400,7 +400,9 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
         />
         <div
           ref={textLayerRef}
-          className="textLayer absolute inset-0 select-text cursor-text z-10"
+          className={`textLayer absolute inset-0 select-text z-10 overflow-hidden ${
+            interactionMode === 'select' ? 'pointer-events-auto cursor-text' : 'pointer-events-none'
+          }`}
           style={{
             width: `${dimensions.width}px`,
             height: `${dimensions.height}px`,

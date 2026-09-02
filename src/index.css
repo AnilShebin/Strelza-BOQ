@@ -281,3 +281,42 @@
     background: rgba(156, 163, 175, 0.45);
   }
 }
+
+/* PDF.js Text Layer Overlay */
+.textLayer {
+  position: absolute;
+  text-align: initial;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  opacity: 1;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.textLayer span,
+.textLayer span br {
+  color: transparent !important;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer ::selection {
+  background: rgba(37, 99, 235, 0.25) !important;
+  color: transparent !important;
+}
+
+.textLayer .highlight {
+  margin: -1px;
+  padding: 1px;
+  background-color: rgba(242, 126, 32, 0.4);
+  border-radius: 2px;
+}
