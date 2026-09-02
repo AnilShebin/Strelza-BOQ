@@ -22,3 +22,21 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+env/
+ENV/
+
+# Dynamic uploads and temporary PDFs
+backend/uploads/*.pdf
+backend/uploads/*.backup
+backend/uploads/projects/*.slz

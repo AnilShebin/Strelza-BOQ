@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PDFToolbar } from './PDFToolbar';
 import { PDFCanvas } from './PDFCanvas';
+import { ThumbnailsPanel } from './ThumbnailsPanel';
 import { PDFExtractionPanel } from './PDFExtractionPanel';
 
 interface PDFViewerProps {
@@ -11,10 +12,10 @@ interface PDFViewerProps {
   setCurrentPage: (page: number) => void;
   onDocumentLoad: (pages: number) => void;
   onLoadPDF: () => void;
-  isMaximized: boolean;
-  analyzedData: any;
-  analyzing: boolean;
-  analysisError: string | null;
+  isMaximized?: boolean;
+  analyzedData?: any;
+  analyzing?: boolean;
+  analysisError?: string | null;
   onGenerateBOQ?: () => void;
   onViewDashboard?: () => void;
   extractedData?: any;
@@ -24,27 +25,18 @@ interface PDFViewerProps {
   extractingPage?: boolean;
   highlightedBbox?: [number, number, number, number] | null;
   onHighlightBbox?: (bbox: [number, number, number, number] | null) => void;
-  markups: any[];
+  markups?: any[];
   onAddMarkup: (stroke: any) => void;
-  onDeleteMarkup: (id: string) => void;
-  onClearPageMarkups: (page: number) => void;
+  onDeleteMarkup?: (id: string) => void;
+  onClearPageMarkups?: (page: number) => void;
   onUndoMarkup?: () => void;
   onRedoMarkup?: () => void;
   canUndoMarkup?: boolean;
   canRedoMarkup?: boolean;
   highlightAll?: boolean;
   onToggleHighlightAll?: () => void;
-  onSaveProject?: () => void;
-  onOpenProject?: () => void;
-  projectVersions?: any[];
-  activeVersionId?: string;
-  onSelectVersion?: (id: string) => void;
 }
 
-/**
- * PDF Viewer Shell container component.
- * Manages document loading context, zooming levels, and mouse drag behaviors.
- */
 export const PDFViewer: React.FC<PDFViewerProps> = ({
   pdfName,
   pdfBase64,
@@ -53,10 +45,10 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   setCurrentPage,
   onDocumentLoad,
   onLoadPDF,
-  isMaximized,
+  isMaximized = false,
   analyzedData,
-  analyzing,
-  analysisError,
+  analyzing = false,
+  analysisError = null,
   onGenerateBOQ,
   onViewDashboard,
   extractedData,
@@ -76,99 +68,175 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   canRedoMarkup = false,
   highlightAll = false,
   onToggleHighlightAll,
-  onSaveProject,
-  onOpenProject,
-  projectVersions = [],
-  activeVersionId = '',
-  onSelectVersion,
 }) => {
-  const [zoomScale, setZoomScale] = useState(1.0);
+  // Viewer Navigation & Display State
+  const [zoomScale, setZoomScale] = useState<number>(1.0);
   const [zoomMode, setZoomMode] = useState<'fit-width' | 'fit-page' | 'custom'>('fit-width');
-  const [scale, setScale] = useState(1.0);
-  const [rotation, setRotation] = useState(0);
+  const [scale, setScale] = useState<number>(1.0);
+  const [rotation, setRotation] = useState<number>(0);
   const [interactionMode, setInteractionMode] = useState<'select' | 'pan' | 'pen'>('select');
-  const [isPanning, setIsPanning] = useState(false);
-  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
+  const [isPanning, setIsPanning] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [dimensions, setDimensions] = useState({ width: 900, height: 1200 });
+  const [containerWidth, setContainerWidth] = useState<number>(800);
 
+  // Panels State
+  const [showThumbnails, setShowThumbnails] = useState<boolean>(false);
+  const [showExtractionPanel, setShowExtractionPanel] = useState<boolean>(true);
+  const [panelWidth, setPanelWidth] = useState<number>(460);
+  const [isResizing, setIsResizing] = useState<boolean>(false);
+  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
+  const [columnWidths, setColumnWidths] = useState<Record<string, number[]>>({});
+
+  // Active PDF.js Doc Handle
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
+
+  // DOM Refs
+  const viewerRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number }>({
+    x: 0,
+    y: 0,
+    scrollLeft: 0,
+    scrollTop: 0,
+  });
+
+  // Sync selected pages when totalPages changes
   useEffect(() => {
     if (totalPages) {
       const pages = new Set<number>();
-      for (let i = 1; i <= totalPages; i++) {
-        pages.add(i);
-      }
+      for (let i = 1; i <= totalPages; i++) pages.add(i);
       setSelectedPages(pages);
     }
   }, [totalPages]);
-  const [loading, setLoading] = useState(false);
-  const [dimensions, setDimensions] = useState({ width: 1000, height: 1400 });
-  const [containerWidth, setContainerWidth] = useState(800);
-  const [showExtractionPanel, setShowExtractionPanel] = useState(true);
-  const [panelWidth, setPanelWidth] = useState(480);
-  const [isResizing, setIsResizing] = useState(false);
-  const [columnWidths, setColumnWidths] = useState<Record<string, number[]>>({});
-  const [activeColResize, setActiveColResize] = useState<{
-    tableIdx: number;
-    colIdx: number;
-    startX: number;
-    startWidth: number;
-  } | null>(null);
 
-  const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const viewerRef = useRef<HTMLDivElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number }>({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+  // Decode and Load PDF document using PDF.js
+  useEffect(() => {
+    if (!pdfBase64) {
+      setPdfDoc(null);
+      setLoading(false);
+      return;
+    }
 
+    const pdfjsLib = (window as any).pdfjsLib;
+    if (!pdfjsLib) {
+      console.warn('PDF.js library is not loaded on window.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const binaryString = atob(pdfBase64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      pdfjsLib
+        .getDocument({ data: bytes })
+        .promise.then((pdf: any) => {
+          setPdfDoc(pdf);
+          onDocumentLoad(pdf.numPages);
+          setLoading(false);
+        })
+        .catch((err: any) => {
+          console.error('PDF.js parse failed:', err);
+          setLoading(false);
+        });
+    } catch (err) {
+      console.error('Failed to decode PDF base64:', err);
+      setLoading(false);
+    }
+  }, [pdfBase64, onDocumentLoad]);
+
+  // Reset rotation when switching pages/documents
+  useEffect(() => {
+    setRotation(0);
+  }, [currentPage, pdfBase64]);
+
+  // Container Resize Observer
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const handleResize = () => {
+      if (containerRef.current) {
+        setContainerWidth(Math.max(400, containerRef.current.offsetWidth - 48));
+      }
+    };
+    handleResize();
+    const observer = new ResizeObserver(handleResize);
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [pdfDoc]);
+
+  // Zoom helpers
   const zoomIn = useCallback(() => {
     setZoomMode('custom');
-    setZoomScale((prev) => Math.min(5.0, Math.round((prev + 0.15) * 100) / 100));
+    setZoomScale((prev) => Math.min(4.0, Math.round((prev + 0.2) * 100) / 100));
   }, []);
 
   const zoomOut = useCallback(() => {
     setZoomMode('custom');
-    setZoomScale((prev) => Math.max(0.25, Math.round((prev - 0.15) * 100) / 100));
+    setZoomScale((prev) => Math.max(0.25, Math.round((prev - 0.2) * 100) / 100));
   }, []);
 
-  // Intercept Ctrl + mouse scroll to zoom PDF and prevent page zoom
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+  const handleZoomSelect = useCallback((mode: 'fit-width' | 'fit-page' | number) => {
+    if (typeof mode === 'number') {
+      setZoomMode('custom');
+      setZoomScale(mode);
+    } else {
+      setZoomMode(mode);
+    }
+  }, []);
 
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
+  // Keyboard Navigation Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept when typing in inputs/textareas
+      if (
+        document.activeElement?.tagName === 'INPUT' ||
+        document.activeElement?.tagName === 'TEXTAREA'
+      ) {
+        return;
+      }
+
+      if (e.key === 'ArrowLeft' && currentPage > 1) {
         e.preventDefault();
-        if (e.deltaY < 0) {
-          zoomIn();
-        } else {
-          zoomOut();
-        }
+        setCurrentPage(currentPage - 1);
+      } else if (e.key === 'ArrowRight' && currentPage < totalPages) {
+        e.preventDefault();
+        setCurrentPage(currentPage + 1);
+      } else if (e.key === '+' || (e.ctrlKey && e.key === '=')) {
+        e.preventDefault();
+        zoomIn();
+      } else if (e.key === '-' || (e.ctrlKey && e.key === '-')) {
+        e.preventDefault();
+        zoomOut();
+      } else if (e.key === '0' && e.ctrlKey) {
+        e.preventDefault();
+        handleZoomSelect('fit-width');
+      } else if (e.key === 'h' || e.key === 'H') {
+        setInteractionMode('pan');
+      } else if (e.key === 'v' || e.key === 'V') {
+        setInteractionMode('select');
+      } else if (e.key === 'p' || e.key === 'P') {
+        setInteractionMode('pen');
       }
     };
 
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    return () => {
-      container.removeEventListener('wheel', handleWheel);
-    };
-  }, [zoomIn, zoomOut]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentPage, totalPages, zoomIn, zoomOut, handleZoomSelect, setCurrentPage]);
 
-  const toggleFullscreen = () => {
-    if (!viewerRef.current) return;
-    if (!document.fullscreenElement) {
-      viewerRef.current.requestFullscreen().catch(err => console.error("Fullscreen error:", err));
-    } else {
-      document.exitFullscreen();
-    }
-  };
-
-  // Panning handlers
+  // Pan Handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (interactionMode !== 'pan' || !pdfBase64 || !containerRef.current) return;
+    if (interactionMode !== 'pan' || !containerRef.current) return;
     e.preventDefault();
     setIsPanning(true);
     panStartRef.current = {
       x: e.clientX,
       y: e.clientY,
       scrollLeft: containerRef.current.scrollLeft,
-      scrollTop: containerRef.current.scrollTop
+      scrollTop: containerRef.current.scrollTop,
     };
   };
 
@@ -188,43 +256,17 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     setIsResizing(true);
   };
 
-  const resize = useCallback((e: MouseEvent) => {
-    if (!isResizing || !viewerRef.current) return;
-    const viewerRect = viewerRef.current.getBoundingClientRect();
-    const newWidth = viewerRect.right - e.clientX;
-    setPanelWidth(Math.max(280, Math.min(viewerRect.width * 0.75, newWidth)));
-  }, [isResizing]);
+  const resize = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizing || !viewerRef.current) return;
+      const viewerRect = viewerRef.current.getBoundingClientRect();
+      const newWidth = viewerRect.right - e.clientX;
+      setPanelWidth(Math.max(300, Math.min(viewerRect.width * 0.7, newWidth)));
+    },
+    [isResizing]
+  );
 
   const stopResize = useCallback(() => setIsResizing(false), []);
-
-  // Columns resize inside raw grids
-  const startColumnResize = (e: React.MouseEvent, tableIdx: number, colIdx: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const th = e.currentTarget.parentElement;
-    const tr = th?.parentElement;
-    if (!tr) return;
-    const thElements = Array.from(tr.querySelectorAll('th'));
-    const initialWidths = thElements.map(el => el.getBoundingClientRect().width);
-    setColumnWidths(prev => ({ ...prev, [`table-${tableIdx}`]: initialWidths }));
-    setActiveColResize({ tableIdx, colIdx, startX: e.clientX, startWidth: initialWidths[colIdx] });
-  };
-
-  const resizeColumn = useCallback((e: MouseEvent) => {
-    if (!activeColResize) return;
-    const dx = e.clientX - activeColResize.startX;
-    const newWidth = Math.max(50, activeColResize.startWidth + dx);
-    setColumnWidths(prev => {
-      const tableKey = `table-${activeColResize.tableIdx}`;
-      const currentWidths = [...(prev[tableKey] || [])];
-      if (currentWidths.length > activeColResize.colIdx) {
-        currentWidths[activeColResize.colIdx] = newWidth;
-      }
-      return { ...prev, [tableKey]: currentWidths };
-    });
-  }, [activeColResize]);
-
-  const stopColumnResize = useCallback(() => setActiveColResize(null), []);
 
   useEffect(() => {
     if (isResizing) {
@@ -237,76 +279,21 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     };
   }, [isResizing, resize, stopResize]);
 
-  useEffect(() => {
-    if (activeColResize) {
-      window.addEventListener('mousemove', resizeColumn);
-      window.addEventListener('mouseup', stopColumnResize);
-    }
-    return () => {
-      window.removeEventListener('mousemove', resizeColumn);
-      window.removeEventListener('mouseup', stopColumnResize);
-    };
-  }, [activeColResize, resizeColumn, stopColumnResize]);
+  // Column Resizing within extracted data tables
+  const startColumnResize = (e: React.MouseEvent, elementIdx: number, colIdx: number) => {
+    e.preventDefault();
+  };
 
-  // Handle document viewport size
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const handleResize = () => {
-      if (containerRef.current) {
-        setContainerWidth(Math.max(600, containerRef.current.offsetWidth - 64));
-      }
-    };
-    handleResize();
-    const resizeObserver = new ResizeObserver(handleResize);
-    resizeObserver.observe(containerRef.current);
-    return () => resizeObserver.disconnect();
-  }, [pdfDoc]);
-
-  // Decode and load PDF document bytes
-  useEffect(() => {
-    if (pdfBase64) {
-      const pdfjsLib = (window as any).pdfjsLib;
-      if (!pdfjsLib) return;
-      setLoading(true);
-      try {
-        const binaryString = atob(pdfBase64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        pdfjsLib.getDocument({ data: bytes }).promise.then((pdf: any) => {
-          setPdfDoc(pdf);
-          onDocumentLoad(pdf.numPages);
-          setLoading(false);
-        }).catch((err: any) => {
-          console.error("PDF.js loading failed:", err);
-          setLoading(false);
-        });
-      } catch (e) {
-        console.error("Base64 decode failed:", e);
-        setLoading(false);
-      }
-    } else {
-      setPdfDoc(null);
-      setLoading(false);
-    }
-  }, [pdfBase64]);
-
-  useEffect(() => {
-    setRotation(0);
-  }, [currentPage, pdfBase64]);
-
-  const currentPageElements = analyzedData?.elements?.filter((el: any) => el.page === currentPage) || [];
-  const pageMarkupCount = (markups || []).filter((s) => s.page === currentPage).length;
+  const currentPageElements =
+    analyzedData?.elements?.filter((el: any) => el.page === currentPage) || [];
+  const pageMarkupCount = markups.filter((s) => s.page === currentPage).length;
 
   return (
-    <div ref={viewerRef} className="flex-1 flex flex-col bg-bg-app relative overflow-hidden min-h-0 min-w-0">
-      <style>{`
-        .adobe-grab, .adobe-grab * { cursor: grab !important; }
-        .adobe-grabbing, .adobe-grabbing * { cursor: grabbing !important; }
-        .dark .pdf-page-wrapper { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(1.1); }
-      `}</style>
-
+    <div
+      ref={viewerRef}
+      className="flex-1 flex flex-col bg-muted/20 relative overflow-hidden min-h-0 min-w-0 select-none"
+    >
+      {/* Top Toolbar */}
       <PDFToolbar
         pdfBase64={pdfBase64}
         currentPage={currentPage}
@@ -321,84 +308,84 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         setRotation={setRotation}
         zoomMode={zoomMode}
         zoomScale={zoomScale}
-        handleZoomSelect={(m) => typeof m === 'number' ? (setZoomMode('custom'), setZoomScale(m)) : setZoomMode(m)}
-        toggleFullscreen={toggleFullscreen}
+        handleZoomSelect={handleZoomSelect}
         showExtractionPanel={showExtractionPanel}
         setShowExtractionPanel={setShowExtractionPanel}
-        analyzing={analyzing}
-        analyzedData={analyzedData}
-        onGenerateBOQ={onGenerateBOQ}
-        extractedData={extractedData}
-        extracting={extracting}
-        onStartExtraction={(pages) => {
-          const targetPages = pages || (selectedPages.size > 0 ? Array.from(selectedPages) : undefined);
-          onStartExtraction && onStartExtraction(targetPages);
-        }}
+        showThumbnails={showThumbnails}
+        setShowThumbnails={setShowThumbnails}
         onClearPageMarkups={onClearPageMarkups}
         pageMarkupCount={pageMarkupCount}
         onUndoMarkup={onUndoMarkup}
         onRedoMarkup={onRedoMarkup}
         canUndoMarkup={canUndoMarkup}
         canRedoMarkup={canRedoMarkup}
-        onSaveProject={onSaveProject}
-        onOpenProject={onOpenProject}
-        projectVersions={projectVersions}
-        activeVersionId={activeVersionId}
-        onSelectVersion={onSelectVersion}
       />
 
-      <div className="flex-1 flex flex-row min-h-0 min-w-0 overflow-hidden relative">
-        {isResizing && <div className="fixed inset-0 cursor-col-resize z-[9999] select-none" />}
+      {/* Main Workspace Stage */}
+      <div className="flex-1 flex flex-row overflow-hidden relative min-h-0">
+        {/* Left Thumbnails Sidebar */}
+        {showThumbnails && (
+          <ThumbnailsPanel
+            pdfName={pdfName}
+            totalPages={totalPages}
+            currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
+            onLoadPDF={onLoadPDF}
+          />
+        )}
 
-        <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
-          <div
-            ref={containerRef}
-            className={`flex-1 overflow-auto py-6 px-6 flex flex-col items-start justify-start gap-6 min-h-0 bg-bg-app transition-colors duration-150 ${interactionMode === 'pan' ? (isPanning ? 'adobe-grabbing select-none' : 'adobe-grab select-none') : 'cursor-default'}`}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-          >
-            <PDFCanvas
-              pdfDoc={pdfDoc}
-              currentPage={currentPage}
-              scale={scale}
-              rotation={rotation}
-              zoomMode={zoomMode}
-              zoomScale={zoomScale}
-              setScale={setScale}
-              dimensions={dimensions}
-              setDimensions={setDimensions}
-              loading={loading}
-              setLoading={setLoading}
-              interactionMode={interactionMode}
-              isPanning={isPanning}
-              containerWidth={containerWidth}
-              containerRef={containerRef}
-              onLoadPDF={onLoadPDF}
-              onOpenProject={onOpenProject}
-              pdfBase64={pdfBase64}
-              markups={markups}
-              onAddMarkup={onAddMarkup}
-              onDeleteMarkup={onDeleteMarkup}
-              onClearPageMarkups={onClearPageMarkups}
-              highlightedBbox={highlightedBbox}
-              onHighlightBbox={onHighlightBbox}
-              highlightAll={highlightAll}
-              pageElements={currentPageElements}
-            />
-          </div>
+        {/* Center Canvas Viewport */}
+        <div
+          ref={containerRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          className="flex-1 overflow-auto relative bg-neutral-900/5 dark:bg-neutral-950/40 flex flex-col min-h-0 min-w-0 select-none"
+        >
+          <PDFCanvas
+            pdfDoc={pdfDoc}
+            currentPage={currentPage}
+            scale={scale}
+            rotation={rotation}
+            zoomMode={zoomMode}
+            zoomScale={zoomScale}
+            setScale={setScale}
+            dimensions={dimensions}
+            setDimensions={setDimensions}
+            loading={loading}
+            setLoading={setLoading}
+            interactionMode={interactionMode}
+            isPanning={isPanning}
+            containerWidth={containerWidth}
+            containerRef={containerRef}
+            onLoadPDF={onLoadPDF}
+            pdfBase64={pdfBase64}
+            markups={markups}
+            onAddMarkup={onAddMarkup}
+            onDeleteMarkup={onDeleteMarkup}
+            onClearPageMarkups={onClearPageMarkups}
+            highlightedBbox={highlightedBbox}
+            onHighlightBbox={onHighlightBbox}
+            highlightAll={highlightAll}
+            pageElements={currentPageElements}
+          />
 
-          {isMaximized && (
-            <div className="h-[22px] bg-bg-panel border-t border-border-color shrink-0 flex items-center px-4 select-none">
-              <span className="text-[10px] text-text-secondary font-semibold font-display tracking-wide uppercase">
-                {pdfName ? `${pdfName} • Sheet ${currentPage} of ${totalPages}` : 'No document active'}
+          {/* Bottom Document Status Bar */}
+          {pdfName && (
+            <div className="h-6 bg-card/80 border-t border-border/60 shrink-0 flex items-center justify-between px-3 text-[10.5px] text-muted-foreground font-mono select-none backdrop-blur-xs">
+              <span className="truncate max-w-sm">
+                {pdfName}
+              </span>
+              <span>
+                Sheet {currentPage} of {totalPages || 1} • {Math.round(scale * 100)}% Zoom
               </span>
             </div>
           )}
         </div>
 
-        {pdfBase64 && showExtractionPanel && (
+        {/* Right Extraction Panel */}
+        {showExtractionPanel && (
           <PDFExtractionPanel
             analyzing={analyzing}
             analysisError={analysisError}
