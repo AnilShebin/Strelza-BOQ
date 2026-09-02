@@ -33,22 +33,7 @@ export function BoqPage({ onLogout }: BoqPageProps) {
   });
 
   // Documents & Workspace state
-  const [openPdfs, setOpenPdfs] = useState<PDFDoc[]>([
-    {
-      name: 'Sample_Office_BOQ.pdf',
-      path: '/sample.pdf',
-      base64: '',
-      currentPage: 1,
-      totalPages: 12,
-    },
-    {
-      name: 'Electrical_Specifications_Rev2.pdf',
-      path: '/electrical.pdf',
-      base64: '',
-      currentPage: 1,
-      totalPages: 8,
-    },
-  ]);
+  const [openPdfs, setOpenPdfs] = useState<PDFDoc[]>([]);
   const [activePdfIndex, setActivePdfIndex] = useState<number>(0);
   const activePdf = activePdfIndex >= 0 && activePdfIndex < openPdfs.length ? openPdfs[activePdfIndex] : null;
 
