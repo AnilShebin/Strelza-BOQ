@@ -146,18 +146,18 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
           <button
             type="button"
             onClick={() => onToggleHighlightAll?.()}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-all cursor-pointer border ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10.5px] font-medium transition-all cursor-pointer border ${
               highlightAll
-                ? 'bg-primary/15 text-primary border-primary/30 shadow-2xs'
+                ? 'bg-amber-500/20 text-amber-500 dark:text-amber-400 border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.25)] ring-1 ring-amber-400/30'
                 : 'bg-muted/60 text-muted-foreground border-border/60 hover:bg-muted hover:text-foreground'
             }`}
             title="Highlight all detected bounding boxes on the drawing canvas"
           >
-            <HighlighterIcon className="size-3" />
+            <HighlighterIcon className={`size-3 ${highlightAll ? 'text-amber-500 dark:text-amber-400' : ''}`} />
             <span>Highlight</span>
             <span
               className={`size-1.5 rounded-full ${
-                highlightAll ? 'bg-primary animate-pulse' : 'bg-muted-foreground/40'
+                highlightAll ? 'bg-amber-500 dark:bg-amber-400 animate-ping' : 'bg-muted-foreground/40'
               }`}
             />
           </button>

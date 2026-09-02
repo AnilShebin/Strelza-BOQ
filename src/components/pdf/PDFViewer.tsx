@@ -287,7 +287,11 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
   const currentPageElements =
     analyzedData?.elements?.filter((el: any) => el.page === currentPage) || [];
-  const pageMarkupCount = (markups || []).filter((s) => s.page === currentPage).length;
+  const [internalHighlightAll, setInternalHighlightAll] = useState(false);
+  const activeHighlightAll =
+    onToggleHighlightAll ? highlightAll : internalHighlightAll;
+  const handleToggleHighlightAll =
+    onToggleHighlightAll || (() => setInternalHighlightAll((prev) => !prev));
 
   return (
     <div
@@ -297,7 +301,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       <style>{`
         .adobe-grab, .adobe-grab * { cursor: grab !important; }
         .adobe-grabbing, .adobe-grabbing * { cursor: grabbing !important; }
-        .dark .pdf-page-wrapper { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(1.1); }
+        .dark .pdf-render-canvas { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(1.1); }
       `}</style>
 
       <PDFToolbar
@@ -386,7 +390,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
               onClearPageMarkups={onClearPageMarkups}
               highlightedBbox={highlightedBbox}
               onHighlightBbox={onHighlightBbox}
-              highlightAll={highlightAll}
+              highlightAll={activeHighlightAll}
               pageElements={currentPageElements}
             />
           </div>
@@ -426,8 +430,8 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
             extractingPage={extractingPage}
             highlightedBbox={highlightedBbox}
             onHighlightBbox={onHighlightBbox}
-            highlightAll={highlightAll}
-            onToggleHighlightAll={onToggleHighlightAll}
+            highlightAll={activeHighlightAll}
+            onToggleHighlightAll={handleToggleHighlightAll}
             selectedPages={selectedPages}
             setSelectedPages={setSelectedPages}
           />
