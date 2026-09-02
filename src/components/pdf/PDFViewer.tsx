@@ -287,6 +287,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
   const currentPageElements =
     analyzedData?.elements?.filter((el: any) => el.page === currentPage) || [];
+  const pageMarkupCount = (markups || []).filter((s) => s.page === currentPage).length;
   const [internalHighlightAll, setInternalHighlightAll] = useState(false);
   const activeHighlightAll =
     onToggleHighlightAll ? highlightAll : internalHighlightAll;
