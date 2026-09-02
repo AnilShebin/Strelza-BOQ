@@ -193,7 +193,122 @@ export function BOQDataTable({
     toast.success("Item removed from BOQ Schedule")
   }, [])
 
+  // Dynamic Column definitions for Master Price List vs BOQ Viewer
   const columns = React.useMemo(() => {
+    if (viewMode === 'pricelist') {
+      return columnHelper.columns([
+        columnHelper.display({
+          id: "select",
+          header: ({ table }) => (
+            <div className="w-10 flex items-center justify-center">
+              <Checkbox
+                checked={
+                  table.getIsAllRowsSelected()
+                    ? true
+                    : table.getIsSomeRowsSelected()
+                    ? "indeterminate"
+                    : false
+                }
+                onCheckedChange={(value) => table.toggleAllRowsSelected(!!value)}
+                aria-label="Select all"
+                className="size-4 rounded border-border/80"
+              />
+            </div>
+          ),
+          cell: ({ row }) => (
+            <div className="w-10 flex items-center justify-center">
+              <Checkbox
+                checked={row.getIsSelected()}
+                onCheckedChange={(value) => row.toggleSelected(!!value)}
+                aria-label="Select row"
+                className="size-4 rounded border-border/80"
+              />
+            </div>
+          ),
+          enableSorting: false,
+          enableHiding: false,
+        }),
+        columnHelper.accessor("code", {
+          header: () => <div className="w-28 text-xs font-semibold text-muted-foreground">SOR Code</div>,
+          cell: ({ row }) => (
+            <div className="w-28 font-mono text-xs font-semibold text-primary">
+              {row.original.code || "—"}
+            </div>
+          ),
+        }),
+        columnHelper.accessor("header", {
+          header: () => <div className="text-xs font-semibold text-muted-foreground">Item Description</div>,
+          cell: ({ row }) => {
+            const item = row.original
+            return (
+              <div className="flex flex-col gap-0.5 max-w-[540px]">
+                <BOQDrawerItem item={item} />
+              </div>
+            )
+          },
+          enableHiding: false,
+        }),
+        columnHelper.accessor("unit", {
+          header: () => <div className="w-20 text-center text-xs font-semibold text-muted-foreground">Unit</div>,
+          cell: ({ row }) => (
+            <div className="w-20 text-center font-mono text-xs font-medium text-muted-foreground">
+              <span className="px-2 py-0.5 rounded bg-muted/60 border border-border/60">
+                {row.original.unit || "EA"}
+              </span>
+            </div>
+          ),
+        }),
+        columnHelper.accessor("rate", {
+          header: () => <div className="w-28 text-right text-xs font-semibold text-muted-foreground">Rate ($ Excl. GST)</div>,
+          cell: ({ row }) => (
+            <div className="w-28 text-right font-medium tabular-nums text-xs text-foreground">
+              <span className="text-muted-foreground/60 mr-0.5">$</span>
+              {row.original.rate.toFixed(2)}
+            </div>
+          ),
+        }),
+        columnHelper.accessor("type", {
+          header: () => <div className="w-36 text-center text-xs font-semibold text-muted-foreground">Category / Section</div>,
+          cell: ({ row }) => (
+            <div className="w-36 flex justify-center">
+              <span className={`px-2.5 py-0.5 text-[11px] font-medium rounded-full border truncate max-w-[140px] text-center transition-colors ${getCategoryStyle(row.original.type)}`}>
+                {row.original.type}
+              </span>
+            </div>
+          ),
+        }),
+        columnHelper.display({
+          id: "actions",
+          header: () => <div className="text-right pr-2 text-xs font-semibold text-muted-foreground">Actions</div>,
+          cell: ({ row }) => (
+            <div className="flex items-center justify-end gap-1 pr-2">
+              {onEditItem && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onEditItem(row.original)}
+                  title="Edit Item"
+                  className="size-7 text-muted-foreground hover:text-foreground rounded-md cursor-pointer"
+                >
+                  <PencilIcon className="size-3.5" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleDeleteItem(row.original.id)}
+                title="Delete Item"
+                className="size-7 text-muted-foreground hover:text-destructive rounded-md cursor-pointer"
+              >
+                <Trash2Icon className="size-3.5" />
+              </Button>
+            </div>
+          ),
+        }),
+      ])
+    }
+
+    // BOQ Viewer Columns (with Quantity & Total Cost)
     return columnHelper.columns([
       columnHelper.display({
         id: "select",
@@ -227,7 +342,7 @@ export function BOQDataTable({
         enableHiding: false,
       }),
       columnHelper.accessor("header", {
-        header: "Header",
+        header: "Item Description & SOR Code",
         cell: ({ row }) => {
           const item = row.original
           return (
@@ -353,7 +468,7 @@ export function BOQDataTable({
         ),
       }),
     ])
-  }, [handleQuantityChange, handleDeleteItem, onEditItem])
+  }, [viewMode, handleQuantityChange, handleDeleteItem, onEditItem])
 
   // Search filter
   const filteredData = React.useMemo(() => {
@@ -546,19 +661,29 @@ export function BOQDataTable({
           <span className="px-2 py-0.5 rounded-md bg-muted/60 text-muted-foreground border border-border/50 text-[11px]">
             {table.getSelectedRowModel().rows.length} of {table.getRowModel().rows.length} selected
           </span>
-          <span className="hidden sm:inline">
-            Priced Takeoff: <strong className="text-foreground font-semibold">{stats.pricedCount}</strong> of {stats.totalItems} items
+          <span>
+            {viewMode === 'pricelist' ? (
+              <>
+                Total Catalog Items: <strong className="text-foreground font-semibold">{stats.totalItems}</strong>
+              </>
+            ) : (
+              <>
+                Priced Takeoff: <strong className="text-foreground font-semibold">{stats.pricedCount}</strong> of {stats.totalItems} items
+              </>
+            )}
           </span>
         </div>
 
-        <div className="flex items-center gap-4 font-medium">
-          <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-            <span className="text-[11px] text-emerald-400/80 font-normal">Total Estimated Cost:</span>
-            <strong className="text-sm font-bold text-emerald-400 tracking-tight">
-              ${stats.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </strong>
+        {viewMode === 'boq' && (
+          <div className="flex items-center gap-4 font-medium">
+            <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              <span className="text-[11px] text-emerald-400/80 font-normal">Total Estimated Cost:</span>
+              <strong className="text-sm font-bold text-emerald-400 tracking-tight">
+                ${stats.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </strong>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
