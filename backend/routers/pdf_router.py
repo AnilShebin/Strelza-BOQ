@@ -1,18 +1,26 @@
 """
-PDF and Drawing Rendering API Router.
-Provides endpoints for uploading PDFs, high-resolution page rendering to images/base64,
-and generating thumbnail previews.
+PDF and Drawing Rendering API Router with Docling Extraction.
+Provides endpoints for uploading PDFs, rendering pages, generating thumbnails,
+and extracting structured schedule tables via Docling.
 """
 import os
 import shutil
 import base64
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from pydantic import BaseModel
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query, Response
 
 from core.config import UPLOADS_DIR
 from core.pdf_engine import PDFEngine
+from services.extraction_service import extraction_service
 
 router = APIRouter(prefix="/api/pdf", tags=["PDF Engine & Rendering"])
+
+
+class ExtractRequest(BaseModel):
+    path: Optional[str] = None
+    name: Optional[str] = None
+    pages: Optional[List[int]] = None
 
 
 @router.post("/upload", response_model=Dict[str, Any])
@@ -60,6 +68,35 @@ async def upload_pdf(file: UploadFile = File(...)) -> Dict[str, Any]:
                 os.remove(temp_path)
             except Exception:
                 pass
+
+
+@router.post("/extract")
+async def extract_pdf_tables(req: ExtractRequest) -> Dict[str, Any]:
+    """
+    Extracts structured CAD schedule tables, equipment lists, and bounding boxes
+    using the Docling neural TableFormer engine.
+    """
+    pdf_path = req.path
+    if not pdf_path and req.name:
+        candidate = UPLOADS_DIR / req.name
+        if candidate.exists():
+            pdf_path = str(candidate)
+        else:
+            matches = list(UPLOADS_DIR.glob(f"*{req.name}*"))
+            if matches:
+                pdf_path = str(matches[0])
+
+    if not pdf_path or not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail=f"PDF document not found: {pdf_path or req.name}")
+
+    try:
+        result = extraction_service.extract_document(
+            pdf_path=pdf_path,
+            selected_pages=req.pages
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Docling extraction failed: {str(e)}")
 
 
 @router.get("/render-page")

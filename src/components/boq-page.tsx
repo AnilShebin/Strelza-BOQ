@@ -1,17 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { TopBar } from './layout/TopBar';
-import { AppSidebar } from '@/components/app-sidebar';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
-import { PDFViewer } from './pdf/PDFViewer';
-import { BOQDashboard } from './dashboard/BOQDashboard';
-import { OverviewDashboard } from './dashboard/OverviewDashboard';
-import { SettingsView } from './layout/SettingsView';
-import { MappingRulesViewer } from './rules/MappingRulesViewer';
-import { EquipmentCatalogViewer } from './equipment/EquipmentCatalogViewer';
-import { NotFoundPage } from '@/components/ui/404-page-not-found';
-import { Icon } from './common/Icon';
+import { AppSidebar } from '@/components/layout/AppSidebar';
+import { TopBar } from '@/components/layout/TopBar';
+import { PDFViewer } from '@/components/pdf/PDFViewer';
+import { OverviewDashboard } from '@/components/dashboard/OverviewDashboard';
+import { BOQDashboard } from '@/components/dashboard/BOQDashboard';
+import { MappingRulesViewer } from '@/components/mapping/MappingRulesViewer';
+import { EquipmentCatalogViewer } from '@/components/equipment/EquipmentCatalogViewer';
+import { SettingsView } from '@/components/settings/SettingsView';
+import { NotFoundPage } from '@/components/NotFoundPage';
 
-interface PDFDoc {
+export interface PDFDoc {
   name: string;
   path: string;
   base64: string;
@@ -19,13 +18,8 @@ interface PDFDoc {
   totalPages: number;
 }
 
-interface BoqPageProps {
-  onLogout: () => void;
-}
-
-export function BoqPage({ onLogout }: BoqPageProps) {
-  // Navigation & Theme
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+export function BoqPage({ onLogout }: { onLogout?: () => void }) {
+  const [activeTab, setActiveTab] = useState<string>('documents');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('strelza-theme');
     if (saved === 'dark' || saved === 'light') return saved;
@@ -37,7 +31,13 @@ export function BoqPage({ onLogout }: BoqPageProps) {
   const [activePdfIndex, setActivePdfIndex] = useState<number>(0);
   const activePdf = activePdfIndex >= 0 && activePdfIndex < openPdfs.length ? openPdfs[activePdfIndex] : null;
 
-  // Mock UI state
+  // Extraction & Analysis state
+  const [analyzedData, setAnalyzedData] = useState<any>(null);
+  const [extracting, setExtracting] = useState<boolean>(false);
+  const [extractingPage, setExtractingPage] = useState<boolean>(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // UI markup state
   const [markups, setMarkups] = useState<any[]>([]);
   const [highlightedBbox, setHighlightedBbox] = useState<[number, number, number, number] | null>(null);
   const [geminiRateLimit, setGeminiRateLimit] = useState<number>(15);
@@ -52,7 +52,7 @@ export function BoqPage({ onLogout }: BoqPageProps) {
   }, [theme]);
 
   const handleToggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
   const handleSelectPDF = (index: number) => {
@@ -62,7 +62,7 @@ export function BoqPage({ onLogout }: BoqPageProps) {
 
   const handleClosePDF = (index: number) => {
     setOpenPdfs((prev) => {
-      const next = prev.filter((_, i) => i !== index);
+      const next = prev.filter((_, idx) => idx !== index);
       if (activePdfIndex >= next.length) {
         setActivePdfIndex(Math.max(0, next.length - 1));
       }
@@ -73,12 +73,12 @@ export function BoqPage({ onLogout }: BoqPageProps) {
   const handleLoadPDF = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'application/pdf';
+    input.accept = '.pdf';
     input.onchange = async (e: any) => {
       const file = e.target?.files?.[0];
       if (!file) return;
 
-      // Try uploading to Python backend for sanitization (stripping markup/clouds)
+      // Try uploading to Python backend for sanitization & rendering
       try {
         const formData = new FormData();
         formData.append('file', file);
@@ -124,11 +124,70 @@ export function BoqPage({ onLogout }: BoqPageProps) {
     input.click();
   };
 
+  const handleStartExtraction = async (pages?: number[]) => {
+    if (!activePdf) return;
+    setExtracting(true);
+    setAnalysisError(null);
+    try {
+      const res = await fetch('http://localhost:8000/api/pdf/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: activePdf.path,
+          name: activePdf.name,
+          pages: pages && pages.length > 0 ? pages : undefined,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error(`Docling extraction failed with status: ${res.statusText}`);
+      }
+      const data = await res.json();
+      setAnalyzedData(data);
+    } catch (err: any) {
+      console.error('Docling extraction error:', err);
+      setAnalysisError(err.message || 'Docling extraction error');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleReextractPage = async (page: number) => {
+    if (!activePdf) return;
+    setExtractingPage(true);
+    try {
+      const res = await fetch('http://localhost:8000/api/pdf/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: activePdf.path,
+          name: activePdf.name,
+          pages: [page],
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAnalyzedData((prev: any) => {
+          if (!prev) return data;
+          const otherElements = (prev.elements || []).filter((el: any) => el.page !== page);
+          return {
+            ...prev,
+            elements: [...otherElements, ...(data.elements || [])],
+          };
+        });
+      }
+    } catch (err) {
+      console.error('Reextract page error:', err);
+    } finally {
+      setExtractingPage(false);
+    }
+  };
+
   const handleSaveProject = () => {
     const projectData = {
       openPdfs,
       activeTab,
       markups,
+      analyzedData,
       exportedAt: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
@@ -153,6 +212,7 @@ export function BoqPage({ onLogout }: BoqPageProps) {
           const parsed = JSON.parse(reader.result as string);
           if (parsed.openPdfs) setOpenPdfs(parsed.openPdfs);
           if (parsed.markups) setMarkups(parsed.markups);
+          if (parsed.analyzedData) setAnalyzedData(parsed.analyzedData);
         } catch (err) {
           console.error('Error loading project file:', err);
         }
@@ -181,7 +241,7 @@ export function BoqPage({ onLogout }: BoqPageProps) {
         onSignOut={onLogout}
       />
       <SidebarInset className="flex flex-col min-w-0 h-screen overflow-hidden">
-        {/* TopBar: Global Document Tabs, Sidebar Trigger, Open & Save Project Actions */}
+        {/* TopBar: Microsoft Edge-style browser tabs & sidebar trigger */}
         <header className="flex flex-col z-50 shrink-0">
           <TopBar
             openPdfs={openPdfs}
@@ -207,28 +267,23 @@ export function BoqPage({ onLogout }: BoqPageProps) {
               totalPages={activePdf?.totalPages || 1}
               onDocumentLoad={(pages: number) => updateActivePdfField('totalPages', pages)}
               onLoadPDF={handleLoadPDF}
-              onOpenProject={handleOpenProject}
-              onSaveProject={handleSaveProject}
-              analyzedData={null}
-              analyzing={false}
-              analysisError={null}
+              analyzedData={analyzedData}
+              analyzing={extracting}
+              analysisError={analysisError}
               isMaximized={false}
               onGenerateBOQ={() => setActiveTab('boq')}
               onViewDashboard={() => setActiveTab('dashboard')}
-              extractedData={null}
-              extracting={false}
-              onStartExtraction={() => { }}
-              onReextractPage={() => { }}
-              extractingPage={false}
+              extractedData={analyzedData}
+              extracting={extracting}
+              onStartExtraction={handleStartExtraction}
+              onReextractPage={handleReextractPage}
+              extractingPage={extractingPage}
               highlightedBbox={highlightedBbox}
               onHighlightBbox={setHighlightedBbox}
               markups={markups}
               onAddMarkup={(m: any) => setMarkups((prev) => [...prev, m])}
               onDeleteMarkup={(id: string) => setMarkups((prev) => prev.filter((m) => m.id !== id))}
               onClearPageMarkups={(page: number) => setMarkups((prev) => prev.filter((m) => m.page !== page))}
-              onSelectVersion={() => { }}
-              projectVersions={[]}
-              activeVersionId=""
               onUndoMarkup={() => { }}
               onRedoMarkup={() => { }}
               canUndoMarkup={false}
@@ -252,21 +307,21 @@ export function BoqPage({ onLogout }: BoqPageProps) {
           ) : activeTab === 'dashboard' ? (
             <OverviewDashboard
               pdfName={activePdf?.name}
-              analyzedData={null}
-              analyzing={false}
+              analyzedData={analyzedData}
+              analyzing={extracting}
               onLoadPDF={handleLoadPDF}
               onGenerateBOQ={() => setActiveTab('boq')}
               onTabChange={setActiveTab}
-              extractedData={null}
-              extracting={false}
-              onStartExtraction={() => { }}
+              extractedData={analyzedData}
+              extracting={extracting}
+              onStartExtraction={handleStartExtraction}
             />
           ) : activeTab === 'boq' || activeTab === 'pricelist' ? (
             <BOQDashboard
               viewMode={activeTab === 'pricelist' ? 'pricelist' : 'boq'}
               pdfName={activePdf?.name}
-              analyzedData={null}
-              analyzing={false}
+              analyzedData={analyzedData}
+              analyzing={extracting}
               onLoadPDF={handleLoadPDF}
               onNavigateToPage={(page) => {
                 setActiveTab('documents');
