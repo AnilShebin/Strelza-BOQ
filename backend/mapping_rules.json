@@ -1,0 +1,191 @@
+{
+  "actions": {
+    "INSTALL": [
+      "PROPOSED",
+      "TO BE INSTALLED",
+      "INSTALL",
+      "INSTALLED",
+      "NEW",
+      "ADDITIONAL"
+    ],
+    "REMOVE": [
+      "TO BE RECOVERED",
+      "TO BE RECOVERD",
+      "TO BE REMOVED",
+      "RECOVERED",
+      "REMOVE",
+      "REMOVED",
+      "RECOVER",
+      "DECOMMISSION",
+      "DISMANTLED"
+    ],
+    "REPLACE": [
+      "TO BE REPLACED",
+      "REPLACED",
+      "REPLACE"
+    ],
+    "RELOCATE": [
+      "TO BE RELOCATED",
+      "RELOCATED",
+      "RELOCATE",
+      "TO BE MODIFIED",
+      "MODIFIED",
+      "MODIFY",
+      "TO BE MOVED",
+      "MOVED",
+      "MOVE",
+      "TO BE RAISED",
+      "RAISED",
+      "RAISE"
+    ],
+    "EXISTING": [
+      "EXISTING",
+      "TO REMAIN"
+    ]
+  },
+  "antenna_thresholds": {
+    "5g_max_height_mm": 1000,
+    "4g_min_height_mm": 1500,
+    "5g_model_indicators": [
+      "AIR",
+      "AAU"
+    ]
+  },
+  "categories": {
+    "4G Panel Antenna": [
+      "PANEL ANTENNA",
+      "PANEL ANTENNAS",
+      "ANTENNA",
+      "ANTENNAS",
+      "PANEL",
+      "OMNI",
+      "ACTIVE",
+      "AIR"
+    ],
+    "5G AAU": [
+      "5G AAU",
+      "AAU"
+    ],
+    "REMOTE RADIO UNIT": [
+      "RADIO",
+      "RRU",
+      "RRUS",
+      "RUS",
+      "REMOTE RADIO UNIT"
+    ],
+    "TOWER MOUNTED AMPLIFIER": [
+      "TMA",
+      "TMAS",
+      "TMA'S",
+      "TOWER MOUNTED AMPLIFIER",
+      "TOWER MOUNTED DEVICE"
+    ],
+    "FILTER_COMBINER": [
+      "FILTER",
+      "COMBINER",
+      "MHA",
+      "MHAS"
+    ],
+    "JUNCTION BOX": [
+      "JUNCTION BOX",
+      "JUNCTION BOXES",
+      "JBOX",
+      "JMC",
+      "INTERFACE JUNCTION BOX",
+      "W&B",
+      "SAMSUNG W&B"
+    ],
+    "FEEDERS": [
+      "FEEDER",
+      "FEEDERS",
+      "COAX",
+      "COAXIAL"
+    ],
+    "HYBRID_CABLE": [
+      "HYBRID",
+      "HYBRID CABLE",
+      "HYBRID CABLES",
+      "TRUNK CABLE",
+      "TRUCK CABLE"
+    ],
+    "RACK": [
+      "RACK",
+      "RACKS",
+      "CABINET",
+      "CABINETS"
+    ],
+    "BATTERY": [
+      "BATTERY",
+      "BATTERY STRINGS",
+      "BATTERIES"
+    ],
+    "RECTIFIER": [
+      "RECTIFIER",
+      "RECTIFIERS"
+    ],
+    "DCDU": [
+      "DCDU"
+    ],
+    "PDP": [
+      "PDP"
+    ],
+    "ROUTER": [
+      "ROUTER",
+      "ROUTERS"
+    ],
+    "TRAY": [
+      "TRAY",
+      "TRAYS",
+      "MANAGEMENT TRAY",
+      "MANAGEMENT TRAYS",
+      "SHELF",
+      "SHELFS",
+      "SHELVES"
+    ],
+    "CLAMP": [
+      "CLAMP",
+      "CLAMPS",
+      "QB CLAMPS"
+    ],
+    "SPD": [
+      "SPD",
+      "SURGE",
+      "SURGE PROTECTION",
+      "SURGE PROTECTION DEVICE"
+    ]
+  },
+  "custom_keywords": [
+    "ERICSSON",
+    "TELSTRA",
+    "ELTEK",
+    "VERTIV",
+    "EATON",
+    "PATHFINDER",
+    "RGL-091",
+    "DECON",
+    "SAMSUNG",
+    "OPTUS",
+    "VODAFONE",
+    "KAELUS",
+    "ARGUS",
+    "KATHREIN",
+    "COMMSCOPE",
+    "RFS"
+  ],
+  "drawing_stamps_to_ignore": [
+    "AS BUILT STRUCTURAL & EME COMPLIANCE",
+    "AS BUILT STRUCTURAL AND EME COMPLIANCE",
+    "DESIGN ALTERATIONS",
+    "ALTERATIONS IN RED",
+    "COMPLIANCE BOX",
+    "DO NOT SCALE"
+  ],
+  "model_patterns": [
+    "\\b(?:AIR\\d{4}|RBS\\d{4}|BB\\d{4}|RP\\d{4})\\b",
+    "\\b(?:RADIO\\s+\\d{4}(?:\\s+[A-Z0-9/]+)?)\\b",
+    "\\b(?:FP2\\s+HE|FP2)\\b",
+    "\\b(?:VERTIV\\s+DC-DC|DC-DC\\s+CONVERTERS)\\b",
+    "\\b(?:C48/48-\\w+)\\b",
+    "\\b\\d+RU\\b"
+  ]
+}

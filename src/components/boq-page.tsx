@@ -86,14 +86,40 @@ export function BoqPage({ onLogout }: BoqPageProps) {
   };
 
   const handleLoadPDF = () => {
-    // Pure Web File input
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'application/pdf';
-    input.onchange = (e: any) => {
+    input.onchange = async (e: any) => {
       const file = e.target?.files?.[0];
       if (!file) return;
 
+      // Try uploading to Python backend for sanitization (stripping markup/clouds)
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch('http://localhost:8000/api/pdf/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const newDoc: PDFDoc = {
+            name: data.name || file.name,
+            path: data.path || file.name,
+            base64: data.base64,
+            currentPage: 1,
+            totalPages: parseInt(data.pages, 10) || 1,
+          };
+          setOpenPdfs((prev) => [...prev, newDoc]);
+          setActivePdfIndex(openPdfs.length);
+          setActiveTab('documents');
+          return;
+        }
+      } catch (err) {
+        console.warn('Backend upload unavailable, using client-side reader:', err);
+      }
+
+      // Fallback to client-side FileReader
       const reader = new FileReader();
       reader.onload = () => {
         const base64 = (reader.result as string).split(',')[1] || '';

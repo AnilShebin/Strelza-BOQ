@@ -1,0 +1,17 @@
+{
+  "gemini_rate_limit": 0,
+  "target_headers": [
+    "ITEM",
+    "EQUIPMENT DETAILS",
+    "EXISTING",
+    "PROPOSED",
+    "TOTAL",
+    "REFERENCE DWG"
+  ],
+  "column_mappings": {
+    "description": "EQUIPMENT DETAILS",
+    "quantity": "PROPOSED",
+    "reference": "REFERENCE DWG",
+    "action": ""
+  }
+}
