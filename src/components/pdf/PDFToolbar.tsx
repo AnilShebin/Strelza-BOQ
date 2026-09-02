@@ -111,30 +111,8 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
 
   return (
     <div className="h-11 px-3 border-b border-border/80 bg-card/95 backdrop-blur-xs flex items-center justify-between shrink-0 select-none z-20 gap-3">
-      {/* Left Section: Thumbnails Toggle & Page Navigation */}
+      {/* Left Section: Page Navigation */}
       <div className="flex items-center gap-1.5 shrink-0">
-        {setShowThumbnails && (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => setShowThumbnails(!showThumbnails)}
-            className={`size-7 rounded-md cursor-pointer ${
-              showThumbnails
-                ? 'bg-primary/10 text-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-            title={showThumbnails ? 'Hide Thumbnails' : 'Show Thumbnails'}
-          >
-            {showThumbnails ? (
-              <PanelLeftCloseIcon className="size-3.5" />
-            ) : (
-              <PanelLeftOpenIcon className="size-3.5" />
-            )}
-          </Button>
-        )}
-
-        <div className="h-4 w-px bg-border/60 mx-0.5" />
-
         {/* Page Navigation */}
         <div className="flex items-center gap-1">
           <Button

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PDFToolbar } from './PDFToolbar';
 import { PDFCanvas } from './PDFCanvas';
-import { ThumbnailsPanel } from './ThumbnailsPanel';
 import { PDFExtractionPanel } from './PDFExtractionPanel';
 
 interface PDFViewerProps {
@@ -90,7 +89,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   const [loading, setLoading] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 1000, height: 1400 });
   const [containerWidth, setContainerWidth] = useState(800);
-  const [showThumbnails, setShowThumbnails] = useState(false);
   const [showExtractionPanel, setShowExtractionPanel] = useState(true);
   const [panelWidth, setPanelWidth] = useState(480);
   const [isResizing, setIsResizing] = useState(false);
@@ -328,8 +326,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         isFullscreen={isFullscreen}
         showExtractionPanel={showExtractionPanel}
         setShowExtractionPanel={setShowExtractionPanel}
-        showThumbnails={showThumbnails}
-        setShowThumbnails={setShowThumbnails}
         onClearPageMarkups={onClearPageMarkups}
         pageMarkupCount={pageMarkupCount}
         onUndoMarkup={onUndoMarkup}
@@ -340,17 +336,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
       <div className="flex-1 flex flex-row min-h-0 min-w-0 overflow-hidden relative">
         {isResizing && <div className="fixed inset-0 cursor-col-resize z-[9999] select-none" />}
-
-        {/* Optional Collapsible Left Thumbnails Panel */}
-        {showThumbnails && (
-          <ThumbnailsPanel
-            pdfName={pdfName}
-            totalPages={totalPages}
-            currentPage={currentPage}
-            setCurrentPage={setCurrentPage}
-            onLoadPDF={onLoadPDF}
-          />
-        )}
 
         <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
           <div
