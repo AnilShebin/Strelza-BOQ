@@ -3,6 +3,50 @@ import { Icon } from '../common/Icon';
 import { KPICards } from './KPICards';
 import { ComplianceChecks } from './ComplianceChecks';
 import { UniversViewer, type UniversViewerRef } from './UniversViewer';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { toast as sonnerToast } from 'sonner';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SelectGroup,
+} from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  PlusIcon,
+  FileSpreadsheetIcon,
+  RotateCcwIcon,
+  DownloadIcon,
+  UploadIcon,
+  BookOpenIcon,
+  Trash2Icon,
+  EditIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  LayersIcon,
+} from 'lucide-react';
 
 interface ShadcnSelectProps {
   value: string;
@@ -111,6 +155,16 @@ const ShadcnSelect: React.FC<ShadcnSelectProps> = ({
     </div>
   );
 };
+const DEFAULT_UNITS = ['EA', 'MTR', 'SET', 'JOB', 'DAY', 'LOT', 'CORE', 'HOUR'];
+const DEFAULT_CATEGORIES = [
+  'Antennas & RRUs',
+  'Power & Feeder',
+  'Structural & Mounts',
+  'Plant & Rigging',
+  'Testing & Handover',
+  'Architectural',
+  'General SOR Pricing Items'
+];
 
 interface BOQDashboardProps {
   pdfName?: string;
@@ -140,12 +194,12 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [formCode, setFormCode] = useState('');
   const [formName, setFormName] = useState('');
-  const [formUnit, setFormUnit] = useState('each');
+  const [formUnit, setFormUnit] = useState('EA');
   const [formRate, setFormRate] = useState('');
-  const [formCategory, setFormCategory] = useState('');
+  const [formCategory, setFormCategory] = useState('Antennas & RRUs');
 
-  const [existingCategories, setExistingCategories] = useState<string[]>([]);
-  const [existingUnits, setExistingUnits] = useState<string[]>([]);
+  const [existingCategories, setExistingCategories] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [existingUnits, setExistingUnits] = useState<string[]>(DEFAULT_UNITS);
 
   const [promptState, setPromptState] = useState<{
     isOpen: boolean;
@@ -237,7 +291,6 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
         if (active) {
           setActivePriceListId(String(active.id));
           localStorage.setItem('activePriceListId', String(active.id));
-          loadDropdownOptions(String(active.id));
         }
       }
     } catch (err) {
@@ -459,6 +512,11 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
+    if (type === 'success') {
+      sonnerToast.success(message);
+    } else {
+      sonnerToast.error(message);
+    }
     setTimeout(() => setToast(null), 4000);
   };
 
@@ -492,9 +550,9 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
     setEditingItem(null);
     setFormCode('');
     setFormName('');
-    setFormUnit('each');
+    setFormUnit('EA');
     setFormRate('');
-    setFormCategory('General SOR Pricing Items');
+    setFormCategory('Antennas & RRUs');
     setIsModalOpen(true);
   };
 
@@ -502,10 +560,11 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
     loadDropdownOptions();
     setEditingItem(item);
     setFormCode(item.code || '');
-    setFormName(item.name || '');
-    setFormUnit(item.unit || 'each');
+    setFormName(item.name || item.header || '');
+    const unitUpper = (item.unit || 'EA').toUpperCase();
+    setFormUnit(DEFAULT_UNITS.includes(unitUpper) ? unitUpper : (item.unit || 'EA'));
     setFormRate(item.rate !== undefined ? item.rate.toString() : '');
-    setFormCategory(item.category || 'General SOR Pricing Items');
+    setFormCategory(item.category || item.type || 'Antennas & RRUs');
     setIsModalOpen(true);
   };
 
@@ -606,11 +665,11 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
   const hasActiveProject = Boolean(pdfName);
 
   return (
-    <div className="flex-1 flex flex-col p-6 bg-bg-app select-none min-h-0 text-text-primary animate-fadeIn gap-6 overflow-hidden">
+    <div className="flex-1 flex flex-col p-4 md:p-6 bg-background select-none min-h-0 text-foreground animate-fadeIn gap-4 overflow-hidden font-sans">
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-none border shadow-lg animate-slideIn ${
+          className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-lg border shadow-lg animate-slideIn ${
             toast.type === 'success'
               ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
               : 'bg-red-500/10 text-red-500 border-red-500/20'
@@ -621,109 +680,120 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
         </div>
       )}
 
-      {/* Header Row */}
-      <div className="flex justify-between items-center shrink-0">
+      {/* Header Bar */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 shrink-0">
         <div>
-          <h2 className="text-base font-bold font-display tracking-tight flex items-center gap-2 text-text-primary">
-            <Icon name={viewMode === 'pricelist' ? 'price-list' : 'file-text'} size={16} className="text-accent-blue" />
-            <span>{viewMode === 'pricelist' ? 'Master Price List' : 'Bill of Quantities (BOQ)'}</span>
-          </h2>
-          <p className="text-[10px] text-text-muted mt-0.5 font-semibold">
+          <h1 className="text-xl lg:text-2xl font-normal tracking-tight text-foreground">
+            {viewMode === 'pricelist' ? 'Master Price Catalog' : 'Bill of Quantities (BOQ)'}
+          </h1>
+          <p className="text-xs text-muted-foreground mt-0.5 font-normal">
             {viewMode === 'pricelist'
-              ? 'Manage standard pricing catalog, templates, and reference rates.'
-              : hasActiveProject ? `Active PDF Drawing: ${pdfName}` : 'No Active Project / Drawing Loaded'}
+              ? 'Manage standard schedule of rates, unit pricings, and rate books.'
+              : 'Review, price, and export construction takeoff schedule items.'}
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           {viewMode === 'pricelist' && (
-            <div className="flex items-center gap-2 border border-border-color bg-bg-panel px-2.5 py-1 rounded-lg shadow-sm">
-              <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Book:</span>
-              <select
-                value={activePriceListId}
-                onChange={(e) => handlePriceListChange(e.target.value)}
-                className="bg-transparent text-xs text-text-primary font-semibold outline-none border-0 pr-6 py-0.5 cursor-pointer"
-              >
-                {priceLists.map((p) => (
-                  <option key={p.id} value={String(p.id)} className="bg-bg-panel text-text-primary">
-                    {p.name}
-                  </option>
-                ))}
-                <option value="CREATE_NEW_BOOK" className="text-accent-blue font-bold">
-                  + Create New Book
-                </option>
-              </select>
-              
+            <div className="flex items-center gap-1">
+              {/* Book Selector Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 text-xs px-2.5 gap-1.5 cursor-pointer shadow-xs">
+                    <BookOpenIcon className="size-3.5 text-muted-foreground" />
+                    <span>Book: {priceLists.find((p) => String(p.id) === String(activePriceListId))?.name || 'Default'}</span>
+                    <ChevronDownIcon className="size-3 text-muted-foreground ml-0.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 text-xs">
+                  <DropdownMenuLabel className="text-[11px] text-muted-foreground font-normal px-2 py-1">
+                    Select Price Book
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {priceLists.map((p) => (
+                    <DropdownMenuItem
+                      key={p.id}
+                      onClick={() => handlePriceListChange(String(p.id))}
+                      className="flex items-center justify-between text-xs cursor-pointer"
+                    >
+                      <span>{p.name}</span>
+                      {String(p.id) === String(activePriceListId) && <CheckIcon className="size-3.5 ml-2 text-primary" />}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => handlePriceListChange('CREATE_NEW_BOOK')}
+                    className="text-primary font-medium cursor-pointer"
+                  >
+                    <PlusIcon className="size-3.5 mr-1.5" />
+                    <span>Create New Book</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               {priceLists.length > 1 && (
-                <button
+                <Button
+                  variant="outline"
+                  size="icon-sm"
                   onClick={handleDeletePriceList}
-                  className="p-1 hover:bg-red-500/10 text-red-500 rounded-md transition-colors cursor-pointer border-0 bg-transparent"
+                  className="h-8 w-8 text-destructive hover:bg-destructive/10 cursor-pointer shadow-xs"
                   title="Delete Current Price Book"
                 >
-                  <Icon name="trash" size={12} />
-                </button>
+                  <Trash2Icon className="size-3.5" />
+                </Button>
               )}
 
-              <button
+              <Button
+                variant="outline"
+                size="icon-sm"
                 onClick={handleRenamePriceList}
-                className="p-1 hover:bg-accent-blue/10 text-accent-blue rounded-md transition-colors cursor-pointer border-0 bg-transparent"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground cursor-pointer shadow-xs"
                 title="Rename Current Price Book"
               >
-                <Icon name="edit" size={12} />
-              </button>
+                <EditIcon className="size-3.5" />
+              </Button>
 
-              <button
+              <Button
+                variant="outline"
+                size="icon-sm"
                 onClick={handleClearAllPriceBookItems}
-                className="p-1 hover:bg-yellow-500/10 text-yellow-500 rounded-md transition-colors cursor-pointer border-0 bg-transparent"
+                className="h-8 w-8 text-amber-500 hover:bg-amber-500/10 cursor-pointer shadow-xs"
                 title="Wipe/Clear All Items inside Price Book"
               >
-                <Icon name="close" size={12} />
-              </button>
-
-              <div className="w-px h-4 bg-border-color mx-1 shrink-0" />
+                <RotateCcwIcon className="size-3.5" />
+              </Button>
 
               {/* Template Download Dropdown */}
-              <div ref={templateContainerRef} className="relative">
-                <button
-                  onClick={() => setIsTemplateDropdownOpen(!isTemplateDropdownOpen)}
-                  className="p-1 hover:bg-bg-app text-text-secondary hover:text-text-primary rounded-md transition-colors cursor-pointer border-0 bg-transparent"
-                  title="Download Template Options"
-                >
-                  <Icon name="download" size={13} />
-                </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 text-xs px-2.5 gap-1.5 cursor-pointer shadow-xs">
+                    <DownloadIcon className="size-3.5 text-muted-foreground" />
+                    <span>Templates</span>
+                    <ChevronDownIcon className="size-3 text-muted-foreground ml-0.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52 text-xs">
+                  <DropdownMenuItem onClick={handleDownloadTemplate} className="cursor-pointer">
+                    <FileSpreadsheetIcon className="size-3.5 mr-2 text-muted-foreground" />
+                    <span>Blank Template (.xlsx)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDownloadCurrentBook} className="cursor-pointer">
+                    <FileSpreadsheetIcon className="size-3.5 mr-2 text-primary" />
+                    <span>Current Price Book (.xlsx)</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-                {isTemplateDropdownOpen && (
-                  <div className="absolute left-0 mt-2 z-50 bg-bg-panel border border-[#d0d7de] p-1.5 rounded-lg shadow-xl w-48 flex flex-col gap-1 select-none text-[11px] font-semibold text-text-secondary">
-                    <button
-                      onClick={() => {
-                        setIsTemplateDropdownOpen(false);
-                        handleDownloadTemplate();
-                      }}
-                      className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-bg-app hover:text-text-primary rounded-md border-0 bg-transparent text-left cursor-pointer transition-colors"
-                    >
-                      <span>Blank Template (.xlsx)</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsTemplateDropdownOpen(false);
-                        handleDownloadCurrentBook();
-                      }}
-                      className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-bg-app hover:text-text-primary rounded-md border-0 bg-transparent text-left cursor-pointer transition-colors"
-                    >
-                      <span>Current Price Book (.xlsx)</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-              
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => importInputRef.current?.click()}
-                className="p-1 hover:bg-bg-app text-text-secondary hover:text-text-primary rounded-md transition-colors cursor-pointer border-0 bg-transparent"
+                className="h-8 text-xs px-2.5 gap-1.5 cursor-pointer shadow-xs"
                 title="Import Excel Price List"
               >
-                <Icon name="upload" size={13} />
-              </button>
-
+                <UploadIcon className="size-3.5 text-muted-foreground" />
+                <span>Import Excel</span>
+              </Button>
               <input
                 type="file"
                 ref={importInputRef}
@@ -734,65 +804,61 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
             </div>
           )}
 
-          <button
+          {/* Add Item Button */}
+          <Button
+            size="sm"
             onClick={handleOpenAddModal}
             disabled={!hasFile}
-            className="bg-accent-blue hover:bg-accent-blue-hover text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center transition-all cursor-pointer shadow border-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="h-8 px-3 text-xs gap-1.5 cursor-pointer bg-primary text-primary-foreground shadow-2xs hover:bg-primary/90 font-medium rounded-lg"
           >
+            <PlusIcon className="size-3.5" />
             <span>Add Item</span>
-          </button>
-          
+          </Button>
+
           {viewMode !== 'pricelist' && (
             <>
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleResetEstimates}
                 disabled={!hasFile}
-                className="border border-border-color bg-bg-panel hover:bg-bg-app text-text-secondary px-3 py-1.5 rounded text-xs font-semibold flex items-center transition-all cursor-pointer shadow disabled:opacity-40 disabled:cursor-not-allowed"
+                className="h-8 px-3 text-xs gap-1.5 cursor-pointer shadow-2xs rounded-lg border-border/70 text-muted-foreground hover:text-foreground hover:bg-muted/60"
               >
+                <RotateCcwIcon className="size-3.5 text-muted-foreground" />
                 <span>Reset Estimates</span>
-              </button>
-              
-              {/* Download Excel Dropdown */}
-              <div ref={downloadContainerRef} className="relative">
-                <button
-                  onClick={() => setIsDownloadDropdownOpen(!isDownloadDropdownOpen)}
-                  disabled={!hasFile}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow disabled:opacity-40 disabled:cursor-not-allowed border-0"
-                >
-                  <span>Download Excel BOQ</span>
-                  <Icon name="chevron-down" size={10} className="text-white" />
-                </button>
+              </Button>
 
-                {isDownloadDropdownOpen && (
-                  <div className="absolute right-0 mt-1 z-[100] bg-bg-panel border border-border-color p-1 shadow-xl w-48 flex flex-col gap-0.5 animate-fadeIn">
-                    <button
-                      onClick={() => {
-                        setIsDownloadDropdownOpen(false);
-                        handleDownloadWorkbook(false);
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-[11px] font-semibold text-text-secondary hover:text-text-primary hover:bg-bg-app transition-colors cursor-pointer bg-transparent border-0"
-                    >
-                      Full BOQ Workbook
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsDownloadDropdownOpen(false);
-                        handleDownloadWorkbook(true);
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-[11px] font-semibold text-text-secondary hover:text-emerald-500 hover:bg-bg-app transition-colors cursor-pointer bg-transparent border-0"
-                    >
-                      Priced Items Only (Qty &gt; 0)
-                    </button>
-                  </div>
-                )}
-              </div>
+              {/* Download Excel Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    disabled={!hasFile}
+                    className="h-8 px-3 text-xs gap-1.5 cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white shadow-2xs font-medium rounded-lg"
+                  >
+                    <FileSpreadsheetIcon className="size-3.5" />
+                    <span>Export Excel BOQ</span>
+                    <ChevronDownIcon className="size-3 ml-0.5 opacity-80" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 text-xs">
+                  <DropdownMenuItem onClick={() => handleDownloadWorkbook(false)} className="cursor-pointer">
+                    <FileSpreadsheetIcon className="size-3.5 mr-2 text-emerald-500" />
+                    <span>Full BOQ Workbook</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDownloadWorkbook(true)} className="cursor-pointer">
+                    <CheckIcon className="size-3.5 mr-2 text-emerald-500" />
+                    <span>Priced Items Only (Qty &gt; 0)</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           )}
         </div>
       </div>
 
       {/* Sheet Viewer Container */}
-      <div className="flex-1 w-full bg-bg-panel relative flex flex-col min-h-0">
+      <div className="flex-1 w-full min-h-0 overflow-hidden flex flex-col">
         {viewerError ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-6 gap-3">
             <Icon name="warning" size={20} className="text-red-500" />
@@ -815,208 +881,209 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
             activePriceListId={activePriceListId}
             hasActiveProject={hasActiveProject}
             viewMode={viewMode}
+            onCategoryOptionsLoaded={(cats, units) => {
+              setExistingCategories(cats);
+              setExistingUnits(units);
+            }}
           />
         )}
       </div>
 
 
-      {/* Form Modals Transplanted from PriceListDashboard */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-bg-panel border border-border-color w-full max-w-md p-6 shadow-2xl relative flex flex-col gap-4">
-            <h3 className="text-xs font-bold text-text-primary border-b border-border-color pb-2 uppercase tracking-wider">
-              {editingItem ? 'Edit SOR Pricing Item' : 'Add New SOR Pricing Item'}
-            </h3>
-            
-            <form onSubmit={handleFormSubmit} className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-bold text-text-muted uppercase tracking-wider">SOR Code (Optional)</label>
-                <input
-                  type="text"
-                  value={formCode}
-                  onChange={(e) => setFormCode(e.target.value)}
-                  placeholder="e.g. W7893"
-                  className="w-full h-8 bg-bg-app border border-border-color px-3 text-xs text-text-secondary focus:border-accent-blue outline-none"
-                />
+      {/* Add / Edit Item Shadcn Dialog */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">
+              {editingItem ? 'Edit Pricing Item' : 'Add New Item'}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {editingItem
+                ? 'Update rate, description, unit, and section classification.'
+                : 'Add a new schedule item to the master workbook.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleFormSubmit} className="flex flex-col gap-3.5 py-1">
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium text-foreground">SOR Code (Optional)</Label>
+              <Input
+                type="text"
+                value={formCode}
+                onChange={(e) => setFormCode(e.target.value)}
+                placeholder="e.g. 1010-05"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium text-foreground">Item Description *</Label>
+              <Textarea
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="e.g. Remote Radio Unit (RRU) Tower Mount"
+                rows={2}
+                className="text-xs min-h-16 resize-none"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-medium text-foreground">Unit</Label>
+                <Select value={formUnit} onValueChange={setFormUnit}>
+                  <SelectTrigger className="w-full h-8 text-xs">
+                    <SelectValue placeholder="Select unit..." />
+                  </SelectTrigger>
+                  <SelectContent className="text-xs">
+                    <SelectGroup>
+                      {Array.from(new Set([...existingUnits, formUnit])).filter(Boolean).map((u) => (
+                        <SelectItem key={u} value={u} className="text-xs">
+                          {u}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-bold text-text-muted uppercase tracking-wider">Item Name / Description</label>
-                <textarea
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="e.g. Tower Mounted Device Installation"
-                  rows={2}
-                  className="w-full bg-bg-app border border-border-color p-2 text-xs text-text-secondary focus:border-accent-blue outline-none resize-none"
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-medium text-foreground">Rate ($ Excl. GST) *</Label>
+                <Input
+                  type="text"
+                  value={formRate}
+                  onChange={(e) => setFormRate(e.target.value)}
+                  placeholder="e.g. 450.00"
+                  className="h-8 text-xs"
                   required
                 />
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-text-muted uppercase tracking-wider">Unit</label>
-                  <ShadcnSelect
-                    value={formUnit}
-                    onChange={setFormUnit}
-                    options={existingUnits}
-                    placeholder="Select unit..."
-                    addNewText="➕ Add custom unit..."
-                    onAddNew={() => {
-                      setPromptState({
-                        isOpen: true,
-                        title: 'Add Custom Unit',
-                        message: 'Enter new unit name (e.g. meter, lot, each):',
-                        placeholder: 'e.g. meter',
-                        value: '',
-                        onSubmit: (newUnit) => {
-                          if (newUnit.trim()) {
-                            const cleanUnit = newUnit.trim().toLowerCase();
-                            if (!existingUnits.includes(cleanUnit)) {
-                              setExistingUnits(prev => [...prev, cleanUnit].sort());
-                            }
-                            setFormUnit(cleanUnit);
-                          }
-                        }
-                      });
-                    }}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-text-muted uppercase tracking-wider">Rate (Excl. GST)</label>
-                  <input
-                    type="text"
-                    value={formRate}
-                    onChange={(e) => setFormRate(e.target.value)}
-                    placeholder="e.g. 400.00"
-                    className="w-full h-8 bg-bg-app border border-border-color px-3 text-xs text-text-secondary focus:border-accent-blue outline-none"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-bold text-text-muted uppercase tracking-wider">Category / Section</label>
-                <ShadcnSelect
-                  value={formCategory}
-                  onChange={setFormCategory}
-                  options={existingCategories}
-                  placeholder="Select category..."
-                  addNewText="➕ Add custom category..."
-                  onAddNew={() => {
-                    setPromptState({
-                      isOpen: true,
-                      title: 'Add Custom Category',
-                      message: 'Enter new category name:',
-                      placeholder: 'e.g. MOBILES - SMR and INTEGRATION',
-                      value: '',
-                      onSubmit: (newCat) => {
-                        if (newCat.trim()) {
-                          const cleanCat = newCat.trim();
-                          if (!existingCategories.includes(cleanCat)) {
-                            setExistingCategories(prev => [...prev, cleanCat].sort());
-                          }
-                          setFormCategory(cleanCat);
-                        }
-                      }
-                    });
-                  }}
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 mt-4 border-t border-border-color pt-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-border-color text-text-secondary hover:bg-bg-app transition-colors text-xs font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-accent-blue text-white hover:bg-accent-blue/90 transition-colors text-xs font-semibold cursor-pointer border-0"
-                >
-                  {editingItem ? 'Save Changes' : 'Create Item'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {promptState?.isOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-bg-panel border border-border-color w-full max-w-sm p-5 rounded-lg shadow-2xl flex flex-col gap-4 animate-scaleUp">
-            <div>
-              <h4 className="text-sm font-bold font-display text-text-primary">{promptState.title}</h4>
-              <p className="text-[11px] text-text-muted mt-1 font-medium">{promptState.message}</p>
             </div>
-            <input
+
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium text-foreground">Category / Section</Label>
+              <Select value={formCategory} onValueChange={setFormCategory}>
+                <SelectTrigger className="w-full h-8 text-xs">
+                  <SelectValue placeholder="Select category..." />
+                </SelectTrigger>
+                <SelectContent className="text-xs">
+                  <SelectGroup>
+                    {Array.from(new Set([...existingCategories, formCategory])).filter(Boolean).map((c) => (
+                      <SelectItem key={c} value={c} className="text-xs">
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter className="gap-2 pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsModalOpen(false)}
+                className="text-xs cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                className="text-xs cursor-pointer bg-primary text-primary-foreground"
+              >
+                {editingItem ? 'Save Changes' : 'Create Item'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Prompt Dialog */}
+      <Dialog open={Boolean(promptState?.isOpen)} onOpenChange={(open) => { if (!open) setPromptState(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold">{promptState?.title}</DialogTitle>
+            <DialogDescription className="text-xs">{promptState?.message}</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Input
               type="text"
-              value={promptState.value}
-              onChange={(e) => setPromptState(prev => prev ? { ...prev, value: e.target.value } : null)}
-              placeholder={promptState.placeholder}
-              className="w-full h-8 bg-bg-app border border-border-color rounded-md px-3 text-xs text-text-secondary focus:border-accent-blue outline-none"
+              value={promptState?.value || ''}
+              onChange={(e) => setPromptState((prev) => (prev ? { ...prev, value: e.target.value } : null))}
+              placeholder={promptState?.placeholder}
+              className="h-8 text-xs"
               autoFocus
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' && promptState) {
                   promptState.onSubmit(promptState.value);
                   setPromptState(null);
                 }
               }}
             />
-            <div className="flex justify-end gap-3 border-t border-border-color pt-3">
-              <button
-                type="button"
-                onClick={() => setPromptState(null)}
-                className="px-3.5 py-1.5 border border-border-color text-text-secondary hover:bg-bg-app transition-colors text-xs font-semibold rounded-md cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setPromptState(null)}
+              className="text-xs cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                if (promptState) {
                   promptState.onSubmit(promptState.value);
                   setPromptState(null);
-                }}
-                className="px-3.5 py-1.5 bg-accent-blue text-white hover:bg-accent-blue/90 transition-colors text-xs font-semibold rounded-md cursor-pointer border-0"
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                }
+              }}
+              className="text-xs cursor-pointer bg-primary text-primary-foreground"
+            >
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {confirmState?.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-bg-panel border border-border-color w-full max-w-sm p-5 rounded-lg shadow-2xl flex flex-col gap-4 animate-scaleUp">
-            <div>
-              <h4 className="text-sm font-bold font-display text-text-primary">{confirmState.title}</h4>
-              <p className="text-[11px] text-text-secondary mt-1.5 font-medium leading-relaxed">{confirmState.message}</p>
-            </div>
-            <div className="flex justify-end gap-3 border-t border-border-color pt-3">
-              <button
-                type="button"
-                onClick={() => setConfirmState(null)}
-                className="px-3.5 py-1.5 border border-border-color text-text-secondary hover:bg-bg-app transition-colors text-xs font-semibold rounded-md cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
+      {/* Confirmation Dialog */}
+      <Dialog open={Boolean(confirmState?.isOpen)} onOpenChange={(open) => { if (!open) setConfirmState(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold text-destructive">{confirmState?.title}</DialogTitle>
+            <DialogDescription className="text-xs leading-relaxed">{confirmState?.message}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmState(null)}
+              className="text-xs cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (confirmState) {
                   confirmState.onConfirm();
                   setConfirmState(null);
-                }}
-                className="px-3.5 py-1.5 bg-red-500 text-white hover:bg-red-650 transition-colors text-xs font-semibold rounded-md cursor-pointer border-0"
-              >
-                Continue
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                }
+              }}
+              className="text-xs cursor-pointer"
+            >
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
