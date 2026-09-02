@@ -1,6 +1,7 @@
 import React from 'react';
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import { PlusIcon, FileTextIcon, XIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { PlusIcon, FileTextIcon, XIcon, SaveIcon, FolderOpenIcon } from 'lucide-react';
 
 interface TopBarProps {
   openPdfs: Array<{ name: string; path: string }>;
@@ -16,7 +17,7 @@ interface TopBarProps {
 
 /**
  * Microsoft Edge-style browser tab bar with concave corner fillets,
- * fluid hover states, and seamless active sheet blending.
+ * fluid hover states, and quick Project Save/Open actions.
  */
 export const TopBar: React.FC<TopBarProps> = ({
   openPdfs,
@@ -25,11 +26,13 @@ export const TopBar: React.FC<TopBarProps> = ({
   onSelectPDF,
   onClosePDF,
   onLoadPDF,
+  onSaveProject,
+  onOpenProject,
 }) => {
   return (
     <div className="h-[36px] flex justify-between items-center px-2 border-b border-border/70 bg-neutral-900/90 dark:bg-neutral-950/95 backdrop-blur-md shrink-0 select-none z-40 relative">
       {/* Left: Sidebar Trigger & Edge-style Tabs */}
-      <div className="flex items-center h-full shrink-0 max-w-[85vw]">
+      <div className="flex items-center h-full shrink-0 max-w-[75vw]">
         {/* Sidebar Trigger */}
         <SidebarTrigger className="h-7 w-7 mr-2 text-muted-foreground hover:text-foreground hover:bg-white/10 rounded-md transition-colors cursor-pointer" />
 
@@ -121,8 +124,35 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
       </div>
 
-      {/* Right Area Controls Placeholder */}
-      <div className="flex items-center gap-2 h-full shrink-0" />
+      {/* Right Area: Project Save & Open Quick Actions */}
+      <div className="flex items-center gap-1.5 h-full shrink-0">
+        {onOpenProject && (
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={onOpenProject}
+            className="h-6.5 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground hover:bg-white/10 rounded cursor-pointer"
+            title="Open Strelza Project (.slz / .json)"
+          >
+            <FolderOpenIcon className="size-3.5" />
+            <span className="hidden sm:inline">Open</span>
+          </Button>
+        )}
+
+        {onSaveProject && (
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={onSaveProject}
+            disabled={openPdfs.length === 0}
+            className="h-6.5 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground hover:bg-white/10 rounded cursor-pointer disabled:opacity-30"
+            title="Save Project with PDFs & Extracted Schedules (.slz)"
+          >
+            <SaveIcon className="size-3.5 text-primary" />
+            <span className="hidden sm:inline font-medium">Save Project</span>
+          </Button>
+        )}
+      </div>
     </div>
   );
 };

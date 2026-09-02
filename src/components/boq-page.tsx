@@ -8,6 +8,7 @@ import { BOQDashboard } from '@/components/dashboard/BOQDashboard';
 import { MappingRulesViewer } from '@/components/rules/MappingRulesViewer';
 import { EquipmentCatalogViewer } from '@/components/equipment/EquipmentCatalogViewer';
 import { SettingsView } from '@/components/layout/SettingsView';
+import { toast } from 'sonner';
 
 export interface PDFDoc {
   name: string;
@@ -183,39 +184,112 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
     }
   };
 
-  const handleSaveProject = () => {
+  const handleSaveProject = async () => {
+    if (openPdfs.length === 0) {
+      toast.error('No drawings open to save in project.');
+      return;
+    }
+
+    const defaultName = activePdf
+      ? activePdf.name.replace(/\.[^/.]+$/, '').replace(/_cleaned$/, '')
+      : 'Strelza_Project';
+    const filename = `${defaultName}_${Date.now()}.slz`;
+
     const projectData = {
+      version: '2.0',
+      exportedAt: new Date().toISOString(),
       openPdfs,
+      activePdfIndex,
       activeTab,
       markups,
       analyzedData,
-      exportedAt: new Date().toISOString(),
     };
-    const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
+
+    try {
+      // Stream compressed .slz from Python backend
+      const res = await fetch('http://localhost:8000/api/project/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename,
+          project_data: projectData,
+        }),
+      });
+
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success(`Project saved as ${filename}`);
+        return;
+      }
+    } catch (e) {
+      console.warn('Backend download unavailable, using client-side fallback:', e);
+    }
+
+    // Client-side JSON fallback
+    const jsonBlob = new Blob([JSON.stringify(projectData, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(jsonBlob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `strelza-project-${Date.now()}.json`;
+    a.download = `${defaultName}_${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    toast.success('Project saved as JSON file.');
   };
 
   const handleOpenProject = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json';
-    input.onchange = (e: any) => {
+    input.accept = '.slz,.json';
+    input.onchange = async (e: any) => {
       const file = e.target?.files?.[0];
       if (!file) return;
+
+      if (file.name.endsWith('.slz')) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          const res = await fetch('http://localhost:8000/api/project/load-file', {
+            method: 'POST',
+            body: formData,
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const proj = data.project_data || {};
+            if (proj.openPdfs) setOpenPdfs(proj.openPdfs);
+            if (typeof proj.activePdfIndex === 'number') setActivePdfIndex(proj.activePdfIndex);
+            if (proj.markups) setMarkups(proj.markups);
+            if (proj.analyzedData) setAnalyzedData(proj.analyzedData);
+            setActiveTab('documents');
+            toast.success(`Project ${file.name} loaded successfully!`);
+            return;
+          }
+        } catch (err) {
+          console.error('Error loading .slz project:', err);
+        }
+      }
+
+      // JSON project loader
       const reader = new FileReader();
       reader.onload = () => {
         try {
           const parsed = JSON.parse(reader.result as string);
           if (parsed.openPdfs) setOpenPdfs(parsed.openPdfs);
+          if (typeof parsed.activePdfIndex === 'number') setActivePdfIndex(parsed.activePdfIndex);
           if (parsed.markups) setMarkups(parsed.markups);
           if (parsed.analyzedData) setAnalyzedData(parsed.analyzedData);
+          setActiveTab('documents');
+          toast.success(`Project ${file.name} loaded successfully!`);
         } catch (err) {
-          console.error('Error loading project file:', err);
+          console.error('Error parsing project file:', err);
+          toast.error('Failed to parse project file.');
         }
       };
       reader.readAsText(file);

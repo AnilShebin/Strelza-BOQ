@@ -23,6 +23,8 @@ import {
   Sun,
   Building2,
   Boxes,
+  FolderOpen,
+  Save,
 } from "lucide-react"
 
 // Default teams with Strelza BOQ as primary
@@ -105,6 +107,26 @@ export function AppSidebar({
   ...props
 }: AppSidebarProps) {
   const secondaryNavItems = [
+    ...(onOpenProject
+      ? [
+          {
+            title: "Open Project (.slz)",
+            id: "open-project",
+            icon: <FolderOpen className="size-4" />,
+            onClick: onOpenProject,
+          },
+        ]
+      : []),
+    ...(onSaveProject
+      ? [
+          {
+            title: "Save Project (.slz)",
+            id: "save-project",
+            icon: <Save className="size-4 text-primary" />,
+            onClick: onSaveProject,
+          },
+        ]
+      : []),
     {
       title: "Settings",
       id: "settings",
