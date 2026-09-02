@@ -5,9 +5,9 @@ import { TopBar } from '@/components/layout/TopBar';
 import { PDFViewer } from '@/components/pdf/PDFViewer';
 import { OverviewDashboard } from '@/components/dashboard/OverviewDashboard';
 import { BOQDashboard } from '@/components/dashboard/BOQDashboard';
-import { MappingRulesViewer } from '@/components/mapping/MappingRulesViewer';
+import { MappingRulesViewer } from '@/components/rules/MappingRulesViewer';
 import { EquipmentCatalogViewer } from '@/components/equipment/EquipmentCatalogViewer';
-import { SettingsView } from '@/components/settings/SettingsView';
+import { SettingsView } from '@/components/layout/SettingsView';
 
 export interface PDFDoc {
   name: string;
