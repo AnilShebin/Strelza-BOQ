@@ -1,5 +1,25 @@
+"use client"
+
 import * as React from "react"
+import {
+  Boxes,
+  Building2,
+  Cpu,
+  FileCode,
+  FileSpreadsheet,
+  FileText,
+  FolderDot,
+  Layers,
+  LayoutDashboard,
+  Moon,
+  Settings2,
+  Sliders,
+  Sun,
+  Tag,
+} from "lucide-react"
+
 import { NavMain } from "@/components/nav-main"
+import { NavProjects } from "@/components/nav-projects"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
@@ -11,23 +31,8 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import {
-  LayoutDashboard,
-  FileText,
-  Layers,
-  Cpu,
-  Tag,
-  Sliders,
-  Settings2,
-  Moon,
-  Sun,
-  Building2,
-  Boxes,
-  FolderOpen,
-  Save,
-} from "lucide-react"
 
-// Default teams with Strelza BOQ as primary
+// Content preserved with exact shadcn sidebar-07 schema
 const data = {
   user: {
     name: "Anil Shebin",
@@ -37,7 +42,7 @@ const data = {
   teams: [
     {
       name: "Strelza BOQ",
-      logo: <Icon name="logo" size={26} />,
+      logo: <Icon name="logo" size={20} />,
       plan: "Enterprise Workspace",
     },
     {
@@ -84,6 +89,23 @@ const data = {
       icon: <Sliders className="size-4" />,
     },
   ],
+  projects: [
+    {
+      name: "Bella Vista Telecom",
+      url: "#",
+      icon: <FolderDot className="size-4" />,
+    },
+    {
+      name: "Drawing Takeoff Spec",
+      url: "#",
+      icon: <FileCode className="size-4" />,
+    },
+    {
+      name: "Priced BOQ Export",
+      url: "#",
+      icon: <FileSpreadsheet className="size-4" />,
+    },
+  ],
 }
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
@@ -107,26 +129,6 @@ export function AppSidebar({
   ...props
 }: AppSidebarProps) {
   const secondaryNavItems = [
-    ...(onOpenProject
-      ? [
-          {
-            title: "Open Project (.slz)",
-            id: "open-project",
-            icon: <FolderOpen className="size-4" />,
-            onClick: onOpenProject,
-          },
-        ]
-      : []),
-    ...(onSaveProject
-      ? [
-          {
-            title: "Save Project (.slz)",
-            id: "save-project",
-            icon: <Save className="size-4 text-primary" />,
-            onClick: onSaveProject,
-          },
-        ]
-      : []),
     {
       title: "Settings",
       id: "settings",
@@ -143,14 +145,15 @@ export function AppSidebar({
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="border-b border-border/80 p-2 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:h-12 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center">
+      <SidebarHeader>
         <TeamSwitcher teams={data.teams} />
       </SidebarHeader>
-      <SidebarContent className="p-2 gap-2 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:gap-0">
+      <SidebarContent>
         <NavMain items={data.navMain} activeTab={activeTab} onTabChange={onTabChange} />
-        <NavSecondary items={secondaryNavItems} className="mt-auto border-t border-border/80 pt-2 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:pt-0" />
+        <NavProjects projects={data.projects} />
+        <NavSecondary items={secondaryNavItems} className="mt-auto" />
       </SidebarContent>
-      <SidebarFooter className="border-t border-border/80 p-2 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:h-12 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center">
+      <SidebarFooter>
         <NavUser user={data.user} onSignOut={onSignOut} />
       </SidebarFooter>
       <SidebarRail />

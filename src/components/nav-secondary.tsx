@@ -1,5 +1,6 @@
-import * as React from "react"
+"use client"
 
+import * as React from "react"
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -16,7 +17,7 @@ export function NavSecondary({
     title: string
     url?: string
     id?: string
-    icon: React.ReactNode
+    icon?: React.ReactNode
     onClick?: () => void
     isActive?: boolean
   }[]
@@ -24,10 +25,11 @@ export function NavSecondary({
   return (
     <SidebarGroup {...props}>
       <SidebarGroupContent>
-        <SidebarMenu className="gap-1">
+        <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton
+                size="sm"
                 tooltip={item.title}
                 isActive={item.isActive}
                 onClick={item.onClick}
@@ -36,22 +38,12 @@ export function NavSecondary({
                 {item.url && !item.onClick ? (
                   <a href={item.url}>
                     {item.icon}
-                    <span className="group-data-[collapsible=icon]:hidden font-medium">{item.title}</span>
-                    <span className="hidden group-data-[collapsible=icon]:block text-[9px] font-semibold tracking-tight text-center">
-                      {item.title === 'Dark Mode' || item.title === 'Light Mode'
-                        ? item.title === 'Dark Mode' ? 'Dark' : 'Light'
-                        : item.title}
-                    </span>
+                    <span>{item.title}</span>
                   </a>
                 ) : (
                   <>
                     {item.icon}
-                    <span className="group-data-[collapsible=icon]:hidden font-medium">{item.title}</span>
-                    <span className="hidden group-data-[collapsible=icon]:block text-[9px] font-semibold tracking-tight text-center">
-                      {item.title === 'Dark Mode' || item.title === 'Light Mode'
-                        ? item.title === 'Dark Mode' ? 'Dark' : 'Light'
-                        : item.title}
-                    </span>
+                    <span>{item.title}</span>
                   </>
                 )}
               </SidebarMenuButton>
@@ -62,4 +54,3 @@ export function NavSecondary({
     </SidebarGroup>
   )
 }
-
