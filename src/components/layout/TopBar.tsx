@@ -1,5 +1,4 @@
 import React from 'react';
-import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { PlusIcon, FileTextIcon, XIcon } from 'lucide-react';
 
@@ -16,7 +15,8 @@ interface TopBarProps {
 }
 
 /**
- * Compact Top Navigation Bar with persistent document tabs and sidebar trigger.
+ * Microsoft Edge-style browser tab bar with concave corner fillets,
+ * fluid hover states, and seamless active sheet blending.
  */
 export const TopBar: React.FC<TopBarProps> = ({
   openPdfs,
@@ -27,46 +27,80 @@ export const TopBar: React.FC<TopBarProps> = ({
   onLoadPDF,
 }) => {
   return (
-    <div className="h-8 flex justify-between items-center px-2.5 border-b border-border/80 bg-background/95 backdrop-blur-md shrink-0 select-none z-40">
-      {/* Left: Sidebar Trigger & Document Tabs */}
-      <div className="flex items-center h-full shrink-0 max-w-[80vw]">
-        <SidebarTrigger className="h-6 w-6 mr-1.5 text-muted-foreground hover:text-foreground cursor-pointer rounded" />
+    <div className="h-[36px] flex justify-between items-center px-2 border-b border-border/70 bg-neutral-900/90 dark:bg-neutral-950/95 backdrop-blur-md shrink-0 select-none z-40 relative">
+      {/* Left: Sidebar Trigger & Edge-style Tabs */}
+      <div className="flex items-center h-full shrink-0 max-w-[85vw]">
+        {/* Sidebar Trigger */}
+        <SidebarTrigger className="h-7 w-7 mr-2 text-muted-foreground hover:text-foreground hover:bg-white/10 rounded-md transition-colors cursor-pointer" />
 
-        <div className="flex items-end h-full gap-0.5 flex-1 max-w-[700px]">
+        {/* Tab Strip */}
+        <div className="flex items-end h-full gap-0 flex-1 max-w-[760px] relative">
           {openPdfs.map((pdf, idx) => {
             const isActive = idx === activePdfIndex && activeTab === 'documents';
-            const showSeparator =
-              idx > 0 &&
-              !isActive &&
-              (idx - 1 !== activePdfIndex || activeTab !== 'documents');
+            const isPrevActive = idx - 1 === activePdfIndex && activeTab === 'documents';
+            const showDivider = idx > 0 && !isActive && !isPrevActive;
 
             return (
               <React.Fragment key={idx}>
-                {showSeparator && (
-                  <div className="h-3 w-[1px] bg-border/60 self-center shrink-0 mx-0.5" />
+                {/* Inactive Tab Separator Divider */}
+                {showDivider && (
+                  <div className="w-[1px] h-3.5 bg-white/15 dark:bg-white/10 self-center shrink-0 mx-0.5 pointer-events-none" />
                 )}
 
+                {/* Tab Item */}
                 <div
                   onClick={() => onSelectPDF(idx)}
-                  className={`flex items-center gap-1.5 cursor-pointer text-xs select-none transition-all duration-150 flex-1 min-w-[70px] max-w-[180px] shrink relative ${
+                  className={`group relative flex items-center gap-2 cursor-pointer select-none transition-all duration-150 flex-1 min-w-[90px] max-w-[210px] shrink ${
                     isActive
-                      ? 'bg-muted text-foreground font-semibold rounded-t-md h-[27px] px-2.5 z-10 border-t border-x border-border/80 shadow-2xs'
-                      : 'bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground rounded-md h-[24px] px-2 mb-[1px] z-0'
+                      ? 'bg-card text-foreground font-medium rounded-t-[9px] h-[31px] px-3 z-10 shadow-xs border-t border-x border-border/70'
+                      : 'bg-transparent text-muted-foreground hover:bg-white/5 hover:text-foreground rounded-md h-[27px] px-2.5 mb-[2px] mx-0.5 z-0'
                   }`}
                 >
+                  {/* Left Concave Wing (Edge Curve) */}
+                  {isActive && (
+                    <svg
+                      className="absolute bottom-0 -left-[9px] w-[9px] h-[9px] fill-card pointer-events-none z-10"
+                      viewBox="0 0 10 10"
+                    >
+                      <path d="M 10 0 C 10 5.523 5.523 10 0 10 L 10 10 Z" />
+                    </svg>
+                  )}
+
+                  {/* Right Concave Wing (Edge Curve) */}
+                  {isActive && (
+                    <svg
+                      className="absolute bottom-0 -right-[9px] w-[9px] h-[9px] fill-card pointer-events-none z-10"
+                      viewBox="0 0 10 10"
+                    >
+                      <path d="M 0 0 C 0 5.523 4.477 10 10 10 L 0 10 Z" />
+                    </svg>
+                  )}
+
+                  {/* Document Favicon Icon */}
                   <FileTextIcon
-                    className={`size-3 shrink-0 ${
-                      isActive ? 'text-primary' : 'text-muted-foreground'
+                    className={`size-3.5 shrink-0 transition-colors ${
+                      isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
                     }`}
                   />
-                  <span className="truncate min-w-0 flex-1 text-[11px]">{pdf.name}</span>
+
+                  {/* Tab Title */}
+                  <span className="truncate min-w-0 flex-1 text-[11.5px] leading-none">
+                    {pdf.name}
+                  </span>
+
+                  {/* Close Tab Button */}
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       onClosePDF(idx);
                     }}
-                    className="text-muted-foreground hover:bg-foreground/10 hover:text-foreground rounded size-3.5 flex items-center justify-center transition-colors ml-0.5 cursor-pointer shrink-0"
-                    title="Close PDF"
+                    className={`rounded-full size-4.5 flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                      isActive
+                        ? 'text-muted-foreground hover:bg-foreground/15 hover:text-foreground'
+                        : 'opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-white/10 hover:text-foreground'
+                    }`}
+                    title="Close tab (Ctrl+W)"
                   >
                     <XIcon className="size-2.5" />
                   </button>
@@ -75,19 +109,19 @@ export const TopBar: React.FC<TopBarProps> = ({
             );
           })}
 
-          <Button
-            variant="ghost"
-            size="icon-xs"
+          {/* New Tab (+) Button */}
+          <button
+            type="button"
             onClick={onLoadPDF}
-            className="size-6 p-0 rounded text-muted-foreground hover:text-foreground border border-dashed border-border/70 shrink-0 ml-1 mb-[1px] cursor-pointer"
-            title="Open PDF"
+            className="size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/10 flex items-center justify-center transition-colors shrink-0 ml-1.5 mb-[2px] cursor-pointer"
+            title="New tab (Open PDF)"
           >
-            <PlusIcon className="size-3" />
-          </Button>
+            <PlusIcon className="size-4" />
+          </button>
         </div>
       </div>
 
-      {/* Right Area */}
+      {/* Right Area Controls Placeholder */}
       <div className="flex items-center gap-2 h-full shrink-0" />
     </div>
   );
