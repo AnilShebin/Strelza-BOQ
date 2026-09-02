@@ -99,6 +99,8 @@ export function AppSidebar({
   onTabChange,
   theme = "light",
   onToggleTheme,
+  onOpenProject,
+  onSaveProject,
   onSignOut,
   ...props
 }: AppSidebarProps) {

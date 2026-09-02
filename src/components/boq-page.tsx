@@ -134,6 +134,7 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
         body: JSON.stringify({
           path: activePdf.path,
           name: activePdf.name,
+          base64: activePdf.base64,
           pages: pages && pages.length > 0 ? pages : undefined,
         }),
       });
@@ -160,6 +161,7 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
         body: JSON.stringify({
           path: activePdf.path,
           name: activePdf.name,
+          base64: activePdf.base64,
           pages: [page],
         }),
       });

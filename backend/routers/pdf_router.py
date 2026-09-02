@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/pdf", tags=["PDF Engine & Rendering"])
 class ExtractRequest(BaseModel):
     path: Optional[str] = None
     name: Optional[str] = None
+    base64: Optional[str] = None
     pages: Optional[List[int]] = None
 
 
@@ -77,7 +78,25 @@ async def extract_pdf_tables(req: ExtractRequest) -> Dict[str, Any]:
     using the Docling neural TableFormer engine.
     """
     pdf_path = req.path
-    if not pdf_path and req.name:
+
+    # If base64 is provided directly, save it to uploads directory
+    if req.base64:
+        try:
+            filename = req.name or "uploaded_drawing.pdf"
+            if not filename.endswith(".pdf"):
+                filename += ".pdf"
+            target_path = UPLOADS_DIR / filename
+            b64_data = req.base64
+            if "," in b64_data:
+                b64_data = b64_data.split(",")[1]
+            with open(target_path, "wb") as f:
+                f.write(base64.b64decode(b64_data))
+            pdf_path = str(target_path)
+        except Exception as e:
+            print(f"Error saving base64 to disk: {e}")
+
+    # If path not yet set, attempt finding by name in uploads
+    if (not pdf_path or not os.path.exists(pdf_path)) and req.name:
         candidate = UPLOADS_DIR / req.name
         if candidate.exists():
             pdf_path = str(candidate)
@@ -87,7 +106,10 @@ async def extract_pdf_tables(req: ExtractRequest) -> Dict[str, Any]:
                 pdf_path = str(matches[0])
 
     if not pdf_path or not os.path.exists(pdf_path):
-        raise HTTPException(status_code=404, detail=f"PDF document not found: {pdf_path or req.name}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"PDF document '{req.name or req.path}' not found on server. Please upload or include base64 data."
+        )
 
     try:
         result = extraction_service.extract_document(
