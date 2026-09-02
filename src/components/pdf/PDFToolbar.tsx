@@ -27,8 +27,6 @@ import {
   PanelRightOpenIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
-  LayersIcon,
-  Maximize2Icon,
 } from 'lucide-react';
 
 interface PDFToolbarProps {
@@ -74,7 +72,6 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
   zoomMode,
   zoomScale,
   handleZoomSelect,
-  toggleFullscreen,
   showExtractionPanel,
   setShowExtractionPanel,
   showThumbnails = false,
@@ -107,9 +104,9 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
   );
 
   return (
-    <div className="h-11 px-3 border-b border-border/80 bg-card/95 backdrop-blur-xs flex items-center justify-between shrink-0 select-none z-20 gap-2">
+    <div className="h-11 px-3 border-b border-border/80 bg-card/95 backdrop-blur-xs flex items-center justify-between shrink-0 select-none z-20 gap-3">
       {/* Left Section: Thumbnails Toggle & Page Navigation */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 shrink-0">
         {setShowThumbnails && (
           <Button
             variant="ghost"
@@ -132,7 +129,7 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
 
         <div className="h-4 w-px bg-border/60 mx-0.5" />
 
-        {/* Page Nav */}
+        {/* Page Navigation */}
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
@@ -172,8 +169,8 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
         </div>
       </div>
 
-      {/* Middle Section: Tool Modes & Zoom Controls */}
-      <div className="flex items-center gap-1.5">
+      {/* Right / End Section: Tool Modes, Zoom Controls, Rotation & Extraction */}
+      <div className="flex items-center gap-2 shrink-0 ml-auto">
         {/* Interaction Mode Group */}
         <div className="flex items-center p-0.5 rounded-lg bg-muted/60 border border-border/60">
           <Button
@@ -219,7 +216,7 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
           </Button>
         </div>
 
-        {/* Pen Actions when in markup mode or has markups */}
+        {/* Pen Undo/Redo/Clear Actions */}
         {interactionMode === 'pen' && (
           <div className="flex items-center gap-0.5 pl-1 border-l border-border/60">
             {onUndoMarkup && (
@@ -284,13 +281,13 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
                 variant="outline"
                 size="xs"
                 disabled={!pdfBase64}
-                className="h-6.5 px-2 text-[11px] font-mono font-medium gap-1 bg-background hover:bg-muted"
+                className="h-6.5 px-2 text-[11px] font-mono font-medium gap-1 bg-background hover:bg-muted border-border/70"
               >
                 <span>{currentZoomPercent}%</span>
                 <ChevronDownIcon className="size-2.5 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="center" className="w-36 text-xs">
+            <DropdownMenuContent align="end" className="w-36 text-xs">
               <DropdownMenuLabel className="text-[10px] text-muted-foreground font-semibold uppercase">
                 Zoom Modes
               </DropdownMenuLabel>
@@ -347,10 +344,10 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
         >
           <RotateCwIcon className="size-3.5" />
         </Button>
-      </div>
 
-      {/* Right Section: Extraction Studio Sidebar Toggle */}
-      <div className="flex items-center gap-1.5">
+        <div className="h-4 w-px bg-border/60 mx-0.5" />
+
+        {/* Extraction Studio Sidebar Toggle */}
         <Button
           variant={showExtractionPanel ? 'default' : 'outline'}
           size="xs"
