@@ -1,9 +1,9 @@
 import * as React from "react"
-
 import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
+import { Icon } from "@/components/common/Icon"
 import {
   Sidebar,
   SidebarContent,
@@ -21,33 +21,32 @@ import {
   Settings2,
   Moon,
   Sun,
-  GalleryVerticalEnd,
-  AudioLines,
-  Terminal,
+  Building2,
+  Boxes,
 } from "lucide-react"
 
-// Default sidebar-07 data with direct BOQ navigation
+// Default teams with Strelza BOQ as primary
 const data = {
   user: {
-    name: "shadcn",
-    email: "m@example.com",
+    name: "Anil Shebin",
+    email: "anil.shebin@strelza.com",
     avatar: "https://github.com/shadcn.png",
   },
   teams: [
     {
-      name: "Acme Inc",
-      logo: <GalleryVerticalEnd className="size-4" />,
-      plan: "Enterprise",
+      name: "Strelza BOQ",
+      logo: <Icon name="logo" size={26} />,
+      plan: "Enterprise Workspace",
     },
     {
-      name: "Acme Corp.",
-      logo: <AudioLines className="size-4" />,
-      plan: "Startup",
+      name: "Strelza MEP Projects",
+      logo: <Building2 className="size-4 text-primary" />,
+      plan: "Commercial Trade",
     },
     {
-      name: "Evil Corp.",
-      logo: <Terminal className="size-4" />,
-      plan: "Free",
+      name: "Civil & Infrastructure",
+      logo: <Boxes className="size-4 text-primary" />,
+      plan: "Site Takeoffs",
     },
   ],
   navMain: [
@@ -120,20 +119,17 @@ export function AppSidebar({
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
+      <SidebarHeader className="border-b border-border/80 p-2 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:h-12 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center">
         <TeamSwitcher teams={data.teams} />
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="p-2 gap-2 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:gap-0">
         <NavMain items={data.navMain} activeTab={activeTab} onTabChange={onTabChange} />
-        <NavSecondary items={secondaryNavItems} className="mt-auto" />
+        <NavSecondary items={secondaryNavItems} className="mt-auto border-t border-border/80 pt-2 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:pt-0" />
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="border-t border-border/80 p-2 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:h-12 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center">
         <NavUser user={data.user} onSignOut={onSignOut} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )
 }
-
-
-

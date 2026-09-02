@@ -23,8 +23,8 @@ export function NavMain({
 }) {
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Platform</SidebarGroupLabel>
-      <SidebarMenu>
+      <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">Platform</SidebarGroupLabel>
+      <SidebarMenu className="gap-1">
         {items.map((item) => {
           const isItemActive = activeTab ? item.id === activeTab : item.isActive;
           return (
@@ -37,7 +37,10 @@ export function NavMain({
                 }}
               >
                 {item.icon}
-                <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
+                <span className="group-data-[collapsible=icon]:hidden font-medium">{item.title}</span>
+                <span className="hidden group-data-[collapsible=icon]:block text-[9px] font-semibold tracking-tight text-center">
+                  {item.title}
+                </span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           );

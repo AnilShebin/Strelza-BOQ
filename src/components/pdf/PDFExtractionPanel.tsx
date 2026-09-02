@@ -6,9 +6,19 @@ import {
   SparklesIcon,
   XIcon,
   AlertTriangleIcon,
-  ListOrderedIcon,
-  LayersIcon,
   FileSpreadsheetIcon,
+  CheckCheckIcon,
+  SquareIcon,
+  HighlighterIcon,
+  LayersIcon,
+  TableIcon,
+  ArrowRightIcon,
+  RefreshCwIcon,
+  ScanLineIcon,
+  FileTextIcon,
+  CheckCircle2Icon,
+  CpuIcon,
+  InfoIcon,
 } from 'lucide-react';
 
 export type StructuredContent =
@@ -92,48 +102,72 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
   ) as number[];
   pagesWithElements.sort((a, b) => a - b);
 
+  const totalSheets = Math.max(1, totalPages || 1);
+
   return (
     <div
       style={{ width: `${panelWidth}px` }}
-      className="border-l border-border/80 bg-card flex flex-col shrink-0 min-h-0 overflow-hidden text-foreground relative select-none"
+      className="border-l border-border/70 bg-card flex flex-col shrink-0 min-h-0 overflow-hidden text-foreground relative select-none shadow-xl transition-all"
     >
+      {/* Resizing Handle */}
       <div
         onMouseDown={startResize}
-        className={`absolute top-0 bottom-0 left-0 w-1 cursor-col-resize z-50 hover:bg-primary/40 transition-colors ${
-          isResizing ? 'bg-primary/80 w-1' : ''
+        className={`absolute top-0 bottom-0 left-0 w-1.5 cursor-col-resize z-50 hover:bg-primary/50 transition-colors group ${
+          isResizing ? 'bg-primary w-1.5 ring-2 ring-primary/30' : ''
         }`}
-      />
+        title="Drag to resize panel"
+      >
+        <div className="absolute top-1/2 -translate-y-1/2 left-0 w-1.5 h-8 bg-muted-foreground/30 group-hover:bg-primary rounded-r transition-colors" />
+      </div>
 
       {/* Header */}
-      <div className="h-10 px-3.5 border-b border-border/80 flex justify-between items-center shrink-0 bg-muted/20">
-        <div className="flex items-center gap-2">
-          <ListOrderedIcon className="size-3.5 text-primary" />
-          <h3 className="text-xs font-semibold text-foreground">Extraction Results</h3>
+      <div className="h-12 px-3.5 border-b border-border/70 flex justify-between items-center shrink-0 bg-muted/30 backdrop-blur-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="size-7 rounded-lg bg-primary/10 ring-1 ring-primary/20 flex items-center justify-center text-primary shadow-2xs">
+            <ScanLineIcon className="size-4" />
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-xs font-semibold tracking-tight text-foreground">
+                Extraction Studio
+              </h3>
+              <Badge variant="secondary" className="text-[9px] font-medium h-4 px-1.5 py-0 bg-primary/10 text-primary border-0">
+                AI Vision
+              </Badge>
+            </div>
+            <span className="text-[10px] text-muted-foreground">
+              {analyzedData ? 'Table & Schedule Results' : 'Drawing Sheet Scanner'}
+            </span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5 select-none" title="Highlight all bounding boxes on page">
-            <span className="text-[10px] font-medium text-muted-foreground">HIGHLIGHT</span>
-            <button
-              onClick={() => onToggleHighlightAll?.()}
-              className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none border-0 ${
-                highlightAll ? 'bg-primary' : 'bg-muted border border-border/80'
+        <div className="flex items-center gap-2">
+          {/* Highlight Toggle Switch */}
+          <button
+            type="button"
+            onClick={() => onToggleHighlightAll?.()}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-all cursor-pointer border ${
+              highlightAll
+                ? 'bg-primary/15 text-primary border-primary/30 shadow-2xs'
+                : 'bg-muted/60 text-muted-foreground border-border/60 hover:bg-muted hover:text-foreground'
+            }`}
+            title="Highlight all detected bounding boxes on the drawing canvas"
+          >
+            <HighlighterIcon className="size-3" />
+            <span>Highlight</span>
+            <span
+              className={`size-1.5 rounded-full ${
+                highlightAll ? 'bg-primary animate-pulse' : 'bg-muted-foreground/40'
               }`}
-            >
-              <span
-                className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${
-                  highlightAll ? 'translate-x-3.5' : 'translate-x-0.5'
-                }`}
-              />
-            </button>
-          </div>
+            />
+          </button>
 
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-xs"
             onClick={() => setShowExtractionPanel(false)}
-            className="size-6 text-muted-foreground hover:text-foreground rounded"
-            title="Hide Panel"
+            className="size-7 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-md"
+            title="Close Panel"
           >
             <XIcon className="size-3.5" />
           </Button>
@@ -141,42 +175,86 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
       </div>
 
       {/* Body Content */}
-      <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-0 select-none">
+      <div className="flex-1 overflow-y-auto p-3.5 flex flex-col gap-3 min-h-0 select-none">
         {analyzing ? (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5 animate-pulse">
-              <div className="h-4 bg-muted/60 rounded w-1/3" />
-              <div className="h-28 bg-muted/40 rounded-lg" />
+          /* Analyzing Loading State */
+          <div className="flex-1 flex flex-col justify-center items-center p-4 gap-4 my-auto">
+            <div className="relative size-16 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-2xl bg-primary/10 animate-ping opacity-75" />
+              <div className="relative size-14 rounded-2xl bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-primary shadow-md">
+                <CpuIcon className="size-7 animate-pulse" />
+              </div>
             </div>
-            <div className="flex flex-col gap-1.5 animate-pulse">
-              <div className="h-4 bg-muted/60 rounded w-1/2" />
-              <div className="h-24 bg-muted/40 rounded-lg" />
+
+            <div className="text-center space-y-1 max-w-xs">
+              <h4 className="text-xs font-semibold text-foreground">
+                Analyzing Drawing Layouts
+              </h4>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Scanning drawing geometry, schedule tables, and engineering specifications...
+              </p>
+            </div>
+
+            <div className="w-full max-w-xs bg-muted/50 border border-border/70 rounded-lg p-2.5 space-y-2 text-[10.5px]">
+              <div className="flex items-center gap-2 text-foreground font-medium">
+                <span className="size-2 rounded-full bg-primary animate-pulse" />
+                <span>Neural table segmentation</span>
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <span className="size-2 rounded-full bg-muted-foreground/40" />
+                <span>Text OCR & Bounding Box alignment</span>
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <span className="size-2 rounded-full bg-muted-foreground/40" />
+                <span>BOQ column & unit reconciliation</span>
+              </div>
             </div>
           </div>
         ) : analysisError ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-4 border border-dashed border-rose-500/30 bg-rose-500/5 rounded-xl my-auto select-none gap-2">
-            <div className="size-10 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-500">
+          /* Analysis Error State */
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-5 border border-dashed border-destructive/40 bg-destructive/5 rounded-xl my-auto select-none gap-3">
+            <div className="size-11 rounded-xl bg-destructive/10 ring-1 ring-destructive/20 flex items-center justify-center text-destructive shadow-xs">
               <AlertTriangleIcon className="size-5" />
             </div>
-            <h4 className="text-xs font-semibold text-foreground">Extraction Failed</h4>
-            <p className="text-[11px] text-rose-400 leading-relaxed max-w-xs">{analysisError}</p>
+            <div className="space-y-1">
+              <h4 className="text-xs font-semibold text-foreground">Extraction Failed</h4>
+              <p className="text-[11px] text-destructive/90 leading-relaxed max-w-xs">
+                {analysisError}
+              </p>
+            </div>
             {onGenerateBOQ && (
               <Button
                 size="sm"
                 onClick={onGenerateBOQ}
-                className="h-7 text-xs bg-primary text-primary-foreground mt-2"
+                className="h-8 px-3 text-xs bg-primary text-primary-foreground mt-1 shadow-xs gap-1.5"
               >
+                <RefreshCwIcon className="size-3.5" />
                 <span>Retry Extraction</span>
               </Button>
             )}
           </div>
         ) : analyzedData ? (
+          /* Extracted Data Results State */
           (() => {
             const currentPageElements =
               analyzedData?.elements?.filter((el) => el.page === currentPage) || [];
 
             return (
-              <>
+              <div className="flex flex-col gap-3">
+                {/* Current Page Banner */}
+                <div className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-muted/40 border border-border/70">
+                  <div className="flex items-center gap-2">
+                    <LayersIcon className="size-3.5 text-primary" />
+                    <span className="text-xs font-medium text-foreground">
+                      Sheet {currentPage} of {totalSheets}
+                    </span>
+                  </div>
+                  <Badge variant="secondary" className="text-[10px] font-mono">
+                    {currentPageElements.length}{' '}
+                    {currentPageElements.length === 1 ? 'element' : 'elements'} found
+                  </Badge>
+                </div>
+
                 {currentPageElements.length > 0 ? (
                   currentPageElements.map((el, elIdx) => {
                     const isHighlighted =
@@ -196,25 +274,56 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                             else onHighlightBbox?.(el.bbox);
                           }
                         }}
-                        className={`flex flex-col gap-2 p-3 rounded-lg transition-all cursor-pointer border select-text ${
+                        className={`flex flex-col gap-2 p-3 rounded-xl transition-all cursor-pointer border select-text shadow-2xs ${
                           isHighlighted
-                            ? 'border-primary bg-primary/5 ring-1 ring-primary/30 shadow-xs'
-                            : 'bg-muted/30 border-border/70 hover:bg-muted/50'
+                            ? 'border-primary bg-primary/[0.04] ring-2 ring-primary/40 shadow-xs'
+                            : 'bg-card border-border/80 hover:border-primary/40 hover:bg-muted/20'
                         }`}
                       >
-                        <div className="flex justify-between items-center border-b border-border/40 pb-1.5 select-none">
-                          <span className="text-[11px] font-semibold text-foreground truncate">
-                            {el.title ||
-                              (el.type === 'structured'
-                                ? 'Extracted Structured Data'
-                                : 'Extracted Note')}
-                          </span>
-
-                          {el.confidence !== null && el.confidence !== undefined && (
-                            <span className="bg-primary/10 text-primary text-[9.5px] font-semibold px-1.5 py-0.5 rounded shrink-0">
-                              {(el.confidence * 100).toFixed(0)}% match
+                        <div className="flex justify-between items-center border-b border-border/50 pb-2 select-none">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="size-6 rounded-md bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                              {el.type === 'structured' ? (
+                                <TableIcon className="size-3.5" />
+                              ) : (
+                                <FileTextIcon className="size-3.5" />
+                              )}
+                            </div>
+                            <span className="text-xs font-semibold text-foreground truncate">
+                              {el.title ||
+                                (el.type === 'structured'
+                                  ? 'Schedule Table'
+                                  : 'Drawing Note / Specification')}
                             </span>
-                          )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {el.confidence !== null && el.confidence !== undefined && (
+                              <Badge
+                                variant="outline"
+                                className={`text-[9.5px] font-mono px-1.5 py-0 h-4.5 border ${
+                                  el.confidence >= 0.85
+                                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                                }`}
+                              >
+                                {(el.confidence * 100).toFixed(0)}% confidence
+                              </Badge>
+                            )}
+
+                            {el.bbox && (
+                              <span
+                                className={`p-1 rounded text-[9px] ${
+                                  isHighlighted
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                                title="Click to toggle highlight on drawing"
+                              >
+                                <HighlighterIcon className="size-3" />
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         {el.type === 'structured' ? (
@@ -222,7 +331,7 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                             const content = el.content;
                             if (!content || typeof content !== 'object') {
                               return (
-                                <div className="text-[10px] text-muted-foreground italic select-none">
+                                <div className="text-[10px] text-muted-foreground italic select-none py-2 text-center">
                                   Empty structured content.
                                 </div>
                               );
@@ -239,18 +348,17 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                               const currentWidths = columnWidths[tableKey] || [];
 
                               return (
-                                <div className="overflow-x-auto border border-border/70 rounded-md bg-background max-h-[calc(45vh-80px)]">
+                                <div className="overflow-x-auto border border-border/80 rounded-lg bg-background shadow-inner max-h-[calc(45vh-80px)]">
                                   <table
-                                    className="text-left border-separate text-[10px]"
+                                    className="text-left border-collapse text-[10px] w-full"
                                     style={{
-                                      borderSpacing: 0,
                                       tableLayout: currentWidths.length > 0 ? 'fixed' : 'auto',
                                       width: currentWidths.length > 0 ? 'max-content' : '100%',
                                       minWidth: '100%',
                                     }}
                                   >
                                     <thead>
-                                      <tr className="bg-muted/80 text-foreground font-semibold select-none border-b border-border/70">
+                                      <tr className="bg-muted/80 text-foreground font-semibold select-none border-b border-border/80">
                                         {headers.map((hdr, hIdx) => {
                                           const colWidth = currentWidths[hIdx];
                                           return (
@@ -258,21 +366,21 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                                               key={hIdx}
                                               style={{
                                                 width: colWidth ? `${colWidth}px` : undefined,
-                                                minWidth: '60px',
+                                                minWidth: '70px',
                                               }}
-                                              className="sticky top-0 bg-muted/95 z-10 py-1.5 px-2 font-medium whitespace-nowrap border-r border-b border-border/70 last:border-r-0"
+                                              className="sticky top-0 bg-muted/95 backdrop-blur-xs z-10 py-1.5 px-2.5 font-medium whitespace-nowrap border-r border-border/70 last:border-r-0 text-muted-foreground"
                                             >
-                                              <span className="truncate block pr-2">{hdr}</span>
+                                              <span className="truncate block">{hdr}</span>
                                             </th>
                                           );
                                         })}
                                       </tr>
                                     </thead>
-                                    <tbody>
+                                    <tbody className="divide-y divide-border/40">
                                       {rows.map((row, rIdx) => (
                                         <tr
                                           key={rIdx}
-                                          className="border-b border-border/40 last:border-b-0 hover:bg-muted/30"
+                                          className="hover:bg-muted/40 transition-colors"
                                         >
                                           {Array.isArray(row) &&
                                             row.map((cell, cIdx) => {
@@ -282,9 +390,9 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                                                   key={cIdx}
                                                   style={{
                                                     width: colWidth ? `${colWidth}px` : undefined,
-                                                    minWidth: '60px',
+                                                    minWidth: '70px',
                                                   }}
-                                                  className="py-1 px-2 border-r border-border/40 last:border-r-0 font-normal text-muted-foreground whitespace-pre-wrap break-words text-[10px]"
+                                                  className="py-1.5 px-2.5 border-r border-border/40 last:border-r-0 font-normal text-foreground whitespace-pre-wrap break-words text-[10px]"
                                                 >
                                                   {String(cell ?? '')}
                                                 </td>
@@ -305,13 +413,13 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                             ) {
                               const fields = content.fields as Record<string, any>;
                               return (
-                                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10.5px] p-2 bg-background border border-border/70 rounded-md">
+                                <div className="grid grid-cols-2 gap-1.5 text-[10.5px] p-2.5 bg-background border border-border/80 rounded-lg">
                                   {Object.entries(fields).map(([key, val]) => (
                                     <React.Fragment key={key}>
-                                      <div className="font-semibold text-foreground truncate">
+                                      <div className="font-medium text-muted-foreground truncate">
                                         {key}:
                                       </div>
-                                      <div className="text-muted-foreground break-words font-mono">
+                                      <div className="text-foreground font-mono font-medium break-words">
                                         {String(val ?? '')}
                                       </div>
                                     </React.Fragment>
@@ -321,13 +429,13 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                             }
 
                             return (
-                              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10.5px] p-2 bg-background border border-border/70 rounded-md">
+                              <div className="grid grid-cols-2 gap-1.5 text-[10.5px] p-2.5 bg-background border border-border/80 rounded-lg">
                                 {Object.entries(content).map(([key, val]) => (
                                   <React.Fragment key={key}>
-                                    <div className="font-semibold text-foreground truncate">
+                                    <div className="font-medium text-muted-foreground truncate">
                                       {key}:
                                     </div>
-                                    <div className="text-muted-foreground break-words font-mono">
+                                    <div className="text-foreground font-mono font-medium break-words">
                                       {typeof val === 'object' && val !== null
                                         ? JSON.stringify(val)
                                         : String(val ?? '')}
@@ -338,7 +446,7 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                             );
                           })()
                         ) : (
-                          <div className="bg-background border-l-2 border-primary p-2.5 text-[10px] leading-relaxed text-muted-foreground whitespace-pre-wrap select-text font-mono rounded-r-md">
+                          <div className="bg-background border-l-2 border-primary p-2.5 text-[10px] leading-relaxed text-muted-foreground whitespace-pre-wrap select-text font-mono rounded-r-lg border border-border/60">
                             {String(el.content ?? '')}
                           </div>
                         )}
@@ -346,119 +454,225 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                     );
                   })
                 ) : (
-                  <div className="flex flex-col items-center justify-center text-center p-6 border border-dashed border-border/80 rounded-xl my-4 select-none gap-2">
-                    <FileSpreadsheetIcon className="size-7 text-muted-foreground/50" />
+                  <div className="flex flex-col items-center justify-center text-center p-6 border border-dashed border-border/80 rounded-xl my-4 select-none gap-2 bg-muted/10">
+                    <FileSpreadsheetIcon className="size-8 text-muted-foreground/40" />
                     <h4 className="text-xs font-semibold text-foreground">
-                      No Data on Page {currentPage}
+                      No Schedules on Sheet {currentPage}
                     </h4>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      No structured schedule or equipment tables found on this page.
+                    <p className="text-[11px] text-muted-foreground leading-relaxed max-w-xs">
+                      No schedule or equipment tables were detected on this page. Switch pages or re-extract this sheet.
                     </p>
                   </div>
                 )}
-              </>
+              </div>
             );
           })()
         ) : (
-          <div className="flex-1 flex flex-col p-2 bg-card min-h-0 select-none gap-3">
-            <div>
-              <div className="size-9 rounded-lg bg-primary/10 flex items-center justify-center mb-2 text-primary">
-                <SparklesIcon className="size-4" />
+          /* Pre-Extraction Sheet Selection State */
+          <div className="flex-1 flex flex-col min-h-0 select-none gap-3.5">
+            {/* Hero AI Card */}
+            <div className="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-3.5 shadow-xs">
+              <div className="flex items-start gap-3">
+                <div className="size-10 rounded-xl bg-primary/15 ring-1 ring-primary/25 flex items-center justify-center text-primary shrink-0 shadow-xs">
+                  <SparklesIcon className="size-5" />
+                </div>
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h4 className="text-xs font-semibold text-foreground">
+                      AI Drawing Scan Ready
+                    </h4>
+                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 text-primary border-primary/30 bg-primary/5">
+                      Neural OCR
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Select drawing sheets to scan for schedule tables, equipment lists, and BOQ line items.
+                  </p>
+                </div>
               </div>
-              <h4 className="text-xs font-semibold text-foreground">AI Drawing Scan Ready</h4>
-              <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-                Select drawing sheets to scan for Bill of Quantities schedule tables.
-              </p>
+
+              {/* Quick Feature Badges */}
+              <div className="mt-3 pt-2.5 border-t border-border/50 flex items-center gap-2 flex-wrap text-[10px] text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <CheckCircle2Icon className="size-3 text-primary" /> Auto-detect tables
+                </span>
+                <span className="flex items-center gap-1">
+                  <CheckCircle2Icon className="size-3 text-primary" /> Geometry bounding boxes
+                </span>
+              </div>
             </div>
 
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const pages = new Set<number>();
-                  for (let i = 1; i <= (totalPages || 1); i++) pages.add(i);
-                  setSelectedPages(pages);
-                }}
-                className="h-6 px-2 text-[10px]"
-              >
-                Select All
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSelectedPages(new Set())}
-                className="h-6 px-2 text-[10px]"
-              >
-                Select None
-              </Button>
+            {/* Selection Toolbar */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => {
+                    const pages = new Set<number>();
+                    for (let i = 1; i <= totalSheets; i++) pages.add(i);
+                    setSelectedPages(pages);
+                  }}
+                  className="h-6 px-2 text-[10.5px] gap-1 cursor-pointer hover:bg-muted font-medium"
+                >
+                  <CheckCheckIcon className="size-3 text-primary" />
+                  <span>Select All</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => setSelectedPages(new Set())}
+                  className="h-6 px-2 text-[10.5px] gap-1 cursor-pointer hover:bg-muted font-medium text-muted-foreground"
+                >
+                  <SquareIcon className="size-3" />
+                  <span>Clear</span>
+                </Button>
+              </div>
+
+              <Badge variant="secondary" className="text-[10px] font-mono px-2 py-0.5">
+                {selectedPages.size} of {totalSheets} selected
+              </Badge>
             </div>
 
-            <div className="flex-1 min-h-0 border border-border/70 rounded-lg bg-background overflow-y-auto p-2.5 grid grid-cols-2 gap-1.5">
-              {Array.from({ length: totalPages || 1 }).map((_, index) => {
+            {/* Sheet Cards Grid */}
+            <div className="flex-1 min-h-[180px] border border-border/70 rounded-xl bg-muted/20 overflow-y-auto p-2.5 grid grid-cols-2 gap-2.5">
+              {Array.from({ length: totalSheets }).map((_, index) => {
                 const pageNum = index + 1;
                 const isSelected = selectedPages.has(pageNum);
+
                 return (
-                  <label
+                  <div
                     key={pageNum}
-                    className={`flex items-center gap-2 p-2 rounded-md border cursor-pointer select-none transition-all ${
+                    onClick={() => {
+                      setSelectedPages((prev) => {
+                        const next = new Set(prev);
+                        if (isSelected) next.delete(pageNum);
+                        else next.add(pageNum);
+                        return next;
+                      });
+                    }}
+                    className={`group relative flex flex-col justify-between rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden p-2.5 select-none ${
                       isSelected
-                        ? 'border-primary/40 bg-primary/5 text-foreground font-medium'
-                        : 'border-border/60 hover:bg-muted/40 text-muted-foreground'
+                        ? 'border-primary bg-primary/[0.06] ring-1 ring-primary/40 shadow-xs'
+                        : 'border-border/70 bg-card hover:border-border hover:bg-muted/40 hover:shadow-2xs'
                     }`}
                   >
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={(checked) => {
-                        setSelectedPages((prev) => {
-                          const next = new Set(prev);
-                          if (checked) next.add(pageNum);
-                          else next.delete(pageNum);
-                          return next;
-                        });
-                      }}
-                      className="size-3.5"
-                    />
-                    <span className="text-[11px]">Page {pageNum}</span>
-                  </label>
+                    {/* Top Row: Page Title + Checkbox */}
+                    <div className="flex items-center justify-between gap-1.5 z-10">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-semibold text-foreground">
+                          Sheet {pageNum}
+                        </span>
+                      </div>
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={(checked) => {
+                          setSelectedPages((prev) => {
+                            const next = new Set(prev);
+                            if (checked) next.add(pageNum);
+                            else next.delete(pageNum);
+                            return next;
+                          });
+                        }}
+                        className="size-4 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+
+                    {/* Miniature Blueprint Graphic */}
+                    <div className="my-2 h-20 rounded-lg border border-border/60 bg-background/80 relative overflow-hidden flex flex-col justify-between p-1.5 shadow-inner transition-transform group-hover:scale-[1.02]">
+                      {/* Blueprint Grid Background */}
+                      <div className="absolute inset-0 bg-[radial-gradient(var(--border)_1px,transparent_1px)] [background-size:6px_6px] opacity-60" />
+
+                      {/* Stylized CAD Table Preview Lines */}
+                      <div className="relative z-1 space-y-1">
+                        <div className="h-1.5 bg-primary/20 rounded-xs w-3/4" />
+                        <div className="grid grid-cols-3 gap-0.5">
+                          <div className="h-1 bg-muted-foreground/20 rounded-xs" />
+                          <div className="h-1 bg-muted-foreground/20 rounded-xs" />
+                          <div className="h-1 bg-muted-foreground/20 rounded-xs" />
+                        </div>
+                        <div className="grid grid-cols-3 gap-0.5">
+                          <div className="h-1 bg-muted-foreground/20 rounded-xs" />
+                          <div className="h-1 bg-muted-foreground/20 rounded-xs" />
+                          <div className="h-1 bg-muted-foreground/20 rounded-xs" />
+                        </div>
+                      </div>
+
+                      {/* Title block mock */}
+                      <div className="relative z-1 self-end bg-muted/80 border border-border/70 rounded-xs px-1 py-0.5 text-[7px] font-mono text-muted-foreground">
+                        DWG-{pageNum}
+                      </div>
+
+                      {/* Selected Glow Corner */}
+                      {isSelected && (
+                        <div className="absolute top-0 right-0 w-8 h-8 bg-gradient-to-bl from-primary/30 to-transparent pointer-events-none" />
+                      )}
+                    </div>
+
+                    {/* Bottom Status */}
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground z-10">
+                      <span className={isSelected ? 'text-primary font-medium' : ''}>
+                        {isSelected ? 'Selected' : 'Click to select'}
+                      </span>
+                      <span className="font-mono text-[9px] opacity-70">
+                        P.{pageNum}
+                      </span>
+                    </div>
+                  </div>
                 );
               })}
             </div>
 
+            {/* Bottom Extraction CTA */}
             {onStartExtraction && (
-              <Button
-                onClick={() => onStartExtraction(Array.from(selectedPages))}
-                disabled={extracting || selectedPages.size === 0}
-                className="w-full h-8 text-xs font-medium cursor-pointer bg-primary text-primary-foreground shadow-2xs gap-1.5"
-              >
-                <SparklesIcon className="size-3.5 animate-pulse" />
-                <span>
-                  {extracting
-                    ? 'Extracting Layouts...'
-                    : `Start Extraction (${selectedPages.size} pages)`}
-                </span>
-              </Button>
+              <div className="pt-1 flex flex-col gap-1.5">
+                <Button
+                  onClick={() => onStartExtraction(Array.from(selectedPages))}
+                  disabled={extracting || selectedPages.size === 0}
+                  className="w-full h-9.5 text-xs font-semibold cursor-pointer bg-primary text-primary-foreground shadow-md hover:shadow-lg transition-all gap-2"
+                >
+                  <SparklesIcon className="size-4 animate-pulse text-primary-foreground" />
+                  <span>
+                    {extracting
+                      ? 'Extracting Drawing Schedules...'
+                      : selectedPages.size === 0
+                      ? 'Select Sheets to Extract'
+                      : `Start Extraction (${selectedPages.size} ${
+                          selectedPages.size === 1 ? 'Sheet' : 'Sheets'
+                        })`}
+                  </span>
+                  <ArrowRightIcon className="size-3.5 opacity-80 ml-auto" />
+                </Button>
+                <p className="text-[10px] text-center text-muted-foreground flex items-center justify-center gap-1">
+                  <InfoIcon className="size-3" />
+                  Identifies BOQ schedule tables and equipment takeoffs
+                </p>
+              </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Footer Navigation */}
+      {/* Footer Navigation for Extracted Results */}
       {analyzedData && (
-        <div className="p-3 border-t border-border/80 bg-muted/20 shrink-0 select-none flex flex-col gap-2">
+        <div className="p-3 border-t border-border/70 bg-muted/30 backdrop-blur-xs shrink-0 select-none flex flex-col gap-2.5 shadow-xs">
           {pagesWithElements.length > 0 && (
-            <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+            <div className="flex flex-wrap items-center gap-1.5 max-h-20 overflow-y-auto">
+              <span className="text-[10px] font-medium text-muted-foreground mr-1">
+                Sheets:
+              </span>
               {pagesWithElements.map((pageNum) => (
                 <button
                   key={pageNum}
                   onClick={() => setCurrentPage(pageNum)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-colors ${
+                  className={`px-2 py-0.5 rounded-md text-[10.5px] font-medium cursor-pointer transition-all border ${
                     currentPage === pageNum
-                      ? 'bg-primary text-primary-foreground font-semibold'
-                      : 'bg-background border border-border/70 text-muted-foreground hover:bg-muted'
+                      ? 'bg-primary text-primary-foreground font-semibold border-primary shadow-2xs'
+                      : 'bg-card border-border/70 text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
                 >
-                  Page {pageNum}
+                  Sheet {pageNum}
                 </button>
               ))}
             </div>
@@ -471,10 +685,10 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                 size="sm"
                 onClick={() => onReextractPage(currentPage)}
                 disabled={extractingPage}
-                className="flex-1 h-7.5 text-xs gap-1 cursor-pointer"
+                className="flex-1 h-8 text-xs gap-1.5 cursor-pointer hover:bg-muted font-medium"
               >
-                <SparklesIcon className="size-3" />
-                <span>{extractingPage ? 'Extracting...' : 'Extract Page'}</span>
+                <RefreshCwIcon className={`size-3.5 ${extractingPage ? 'animate-spin' : ''}`} />
+                <span>{extractingPage ? 'Extracting...' : 'Re-scan Sheet'}</span>
               </Button>
             )}
 
@@ -483,8 +697,9 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                 size="sm"
                 onClick={onGenerateBOQ}
                 disabled={analyzing}
-                className="flex-1 h-7.5 text-xs bg-primary text-primary-foreground font-medium cursor-pointer shadow-2xs"
+                className="flex-1 h-8 text-xs bg-primary text-primary-foreground font-semibold cursor-pointer shadow-xs hover:shadow-md gap-1.5"
               >
+                <SparklesIcon className="size-3.5" />
                 <span>{analyzing ? 'Generating...' : 'Generate BOQ'}</span>
               </Button>
             )}

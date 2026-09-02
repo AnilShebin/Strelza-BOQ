@@ -24,7 +24,7 @@ export function NavSecondary({
   return (
     <SidebarGroup {...props}>
       <SidebarGroupContent>
-        <SidebarMenu>
+        <SidebarMenu className="gap-1">
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton
@@ -36,12 +36,22 @@ export function NavSecondary({
                 {item.url && !item.onClick ? (
                   <a href={item.url}>
                     {item.icon}
-                    <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
+                    <span className="group-data-[collapsible=icon]:hidden font-medium">{item.title}</span>
+                    <span className="hidden group-data-[collapsible=icon]:block text-[9px] font-semibold tracking-tight text-center">
+                      {item.title === 'Dark Mode' || item.title === 'Light Mode'
+                        ? item.title === 'Dark Mode' ? 'Dark' : 'Light'
+                        : item.title}
+                    </span>
                   </a>
                 ) : (
                   <>
                     {item.icon}
-                    <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
+                    <span className="group-data-[collapsible=icon]:hidden font-medium">{item.title}</span>
+                    <span className="hidden group-data-[collapsible=icon]:block text-[9px] font-semibold tracking-tight text-center">
+                      {item.title === 'Dark Mode' || item.title === 'Light Mode'
+                        ? item.title === 'Dark Mode' ? 'Dark' : 'Light'
+                        : item.title}
+                    </span>
                   </>
                 )}
               </SidebarMenuButton>
