@@ -1,7 +1,7 @@
 import React from 'react';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { PlusIcon, FileTextIcon, XIcon, SaveIcon, FolderOpenIcon } from 'lucide-react';
+import { PlusIcon, FileTextIcon, XIcon, SaveIcon, FolderOpenIcon, CheckCircle2Icon } from 'lucide-react';
 
 interface TopBarProps {
   openPdfs: Array<{ name: string; path: string }>;
@@ -13,11 +13,12 @@ interface TopBarProps {
   onSaveProject?: () => void;
   onOpenProject?: () => void;
   onSignOut?: () => void;
+  autoSaveStatus?: 'saved' | 'saving' | 'idle';
 }
 
 /**
  * Microsoft Edge-style browser tab bar with concave corner fillets,
- * fluid hover states, and quick Project Save/Open actions.
+ * auto-save status indicator, and quick Project Save/Open actions.
  */
 export const TopBar: React.FC<TopBarProps> = ({
   openPdfs,
@@ -28,11 +29,12 @@ export const TopBar: React.FC<TopBarProps> = ({
   onLoadPDF,
   onSaveProject,
   onOpenProject,
+  autoSaveStatus = 'saved',
 }) => {
   return (
     <div className="h-[36px] flex justify-between items-center px-2 border-b border-border/70 bg-neutral-900/90 dark:bg-neutral-950/95 backdrop-blur-md shrink-0 select-none z-40 relative">
       {/* Left: Sidebar Trigger & Edge-style Tabs */}
-      <div className="flex items-center h-full shrink-0 max-w-[75vw]">
+      <div className="flex items-center h-full shrink-0 max-w-[70vw]">
         {/* Sidebar Trigger */}
         <SidebarTrigger className="h-7 w-7 mr-2 text-muted-foreground hover:text-foreground hover:bg-white/10 rounded-md transition-colors cursor-pointer" />
 
@@ -124,8 +126,25 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
       </div>
 
-      {/* Right Area: Project Save & Open Quick Actions */}
-      <div className="flex items-center gap-1.5 h-full shrink-0">
+      {/* Right Area: Auto-Save Status & Project Actions */}
+      <div className="flex items-center gap-2 h-full shrink-0">
+        {/* Auto-save Status Indicator */}
+        {openPdfs.length > 0 && (
+          <div className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted/30 border border-border/50 text-[10px] text-muted-foreground">
+            {autoSaveStatus === 'saving' ? (
+              <>
+                <span className="size-1.5 rounded-full bg-amber-500 animate-ping" />
+                <span>Auto-saving...</span>
+              </>
+            ) : (
+              <>
+                <span className="size-1.5 rounded-full bg-emerald-500" />
+                <span>Auto-saved</span>
+              </>
+            )}
+          </div>
+        )}
+
         {onOpenProject && (
           <Button
             variant="ghost"

@@ -9,6 +9,7 @@ import { MappingRulesViewer } from '@/components/rules/MappingRulesViewer';
 import { EquipmentCatalogViewer } from '@/components/equipment/EquipmentCatalogViewer';
 import { SettingsView } from '@/components/layout/SettingsView';
 import { toast } from 'sonner';
+import { saveWorkspaceToStorage, loadWorkspaceFromStorage } from '@/services/storage';
 
 export interface PDFDoc {
   name: string;
@@ -41,6 +42,46 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
   const [markups, setMarkups] = useState<any[]>([]);
   const [highlightedBbox, setHighlightedBbox] = useState<[number, number, number, number] | null>(null);
   const [geminiRateLimit, setGeminiRateLimit] = useState<number>(15);
+
+  // Auto-save & session persistence state
+  const [isRestored, setIsRestored] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'idle'>('saved');
+
+  // Restore workspace session on initial mount
+  useEffect(() => {
+    loadWorkspaceFromStorage().then((saved) => {
+      if (saved && saved.openPdfs && saved.openPdfs.length > 0) {
+        setOpenPdfs(saved.openPdfs);
+        if (typeof saved.activePdfIndex === 'number') setActivePdfIndex(saved.activePdfIndex);
+        if (saved.analyzedData) setAnalyzedData(saved.analyzedData);
+        if (saved.markups) setMarkups(saved.markups);
+        if (saved.activeTab) setActiveTab(saved.activeTab);
+      }
+      setIsRestored(true);
+    });
+  }, []);
+
+  // Auto-save workspace on changes (debounced by 800ms)
+  useEffect(() => {
+    if (!isRestored) return;
+    if (openPdfs.length === 0 && !analyzedData && markups.length === 0) return;
+
+    setAutoSaveStatus('saving');
+    const timer = setTimeout(async () => {
+      const workspacePayload = {
+        openPdfs,
+        activePdfIndex,
+        analyzedData,
+        markups,
+        activeTab,
+        savedAt: new Date().toISOString(),
+      };
+      await saveWorkspaceToStorage(workspacePayload);
+      setAutoSaveStatus('saved');
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [openPdfs, activePdfIndex, analyzedData, markups, activeTab, isRestored]);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -328,6 +369,7 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
             onSaveProject={handleSaveProject}
             onOpenProject={handleOpenProject}
             onSignOut={onLogout}
+            autoSaveStatus={autoSaveStatus}
           />
         </header>
 
