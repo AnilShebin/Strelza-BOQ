@@ -22,11 +22,10 @@ import {
   ZoomOutIcon,
   ChevronDownIcon,
   RotateCwIcon,
-  SparklesIcon,
-  PanelRightCloseIcon,
-  PanelRightOpenIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
+  PanelRightCloseIcon,
+  PanelRightOpenIcon,
   MaximizeIcon,
   MinimizeIcon,
   MoveHorizontalIcon,
@@ -409,24 +408,22 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
 
         <div className="h-4 w-px bg-border/60 mx-0.5" />
 
-        {/* Extraction Studio Sidebar Toggle */}
+        {/* Toggle Right Panel Button */}
         <Button
-          variant={showExtractionPanel ? 'default' : 'outline'}
-          size="xs"
+          variant={showExtractionPanel ? 'secondary' : 'ghost'}
+          size="icon-xs"
           onClick={() => setShowExtractionPanel(!showExtractionPanel)}
-          className={`h-7 px-2.5 text-xs font-medium gap-1.5 rounded-md cursor-pointer transition-all ${
+          className={`size-7 rounded-md cursor-pointer ${
             showExtractionPanel
-              ? 'bg-primary text-primary-foreground shadow-2xs'
-              : 'border-border/70 text-foreground hover:bg-muted'
+              ? 'bg-primary/10 text-primary'
+              : 'text-muted-foreground hover:text-foreground'
           }`}
-          title="Toggle AI Extraction Studio Panel"
+          title={showExtractionPanel ? 'Collapse Panel' : 'Expand Panel'}
         >
-          <SparklesIcon className="size-3" />
-          <span>Extraction</span>
           {showExtractionPanel ? (
-            <PanelRightCloseIcon className="size-3 opacity-80" />
+            <PanelRightCloseIcon className="size-3.5" />
           ) : (
-            <PanelRightOpenIcon className="size-3 opacity-80" />
+            <PanelRightOpenIcon className="size-3.5" />
           )}
         </Button>
       </div>
