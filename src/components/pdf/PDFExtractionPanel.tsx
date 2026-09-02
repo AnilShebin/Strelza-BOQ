@@ -469,41 +469,9 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
           })()
         ) : (
           /* Pre-Extraction Sheet Selection State */
-          <div className="flex-1 flex flex-col min-h-0 select-none gap-3.5">
-            {/* Hero AI Card */}
-            <div className="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-3.5 shadow-xs">
-              <div className="flex items-start gap-3">
-                <div className="size-10 rounded-xl bg-primary/15 ring-1 ring-primary/25 flex items-center justify-center text-primary shrink-0 shadow-xs">
-                  <SparklesIcon className="size-5" />
-                </div>
-                <div className="space-y-1 min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <h4 className="text-xs font-semibold text-foreground">
-                      AI Drawing Scan Ready
-                    </h4>
-                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 text-primary border-primary/30 bg-primary/5">
-                      Neural OCR
-                    </Badge>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Select drawing sheets to scan for schedule tables, equipment lists, and BOQ line items.
-                  </p>
-                </div>
-              </div>
-
-              {/* Quick Feature Badges */}
-              <div className="mt-3 pt-2.5 border-t border-border/50 flex items-center gap-2 flex-wrap text-[10px] text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <CheckCircle2Icon className="size-3 text-primary" /> Auto-detect tables
-                </span>
-                <span className="flex items-center gap-1">
-                  <CheckCircle2Icon className="size-3 text-primary" /> Geometry bounding boxes
-                </span>
-              </div>
-            </div>
-
-            {/* Selection Toolbar */}
-            <div className="flex items-center justify-between gap-2">
+          <div className="flex-1 flex flex-col min-h-0 select-none gap-3">
+            {/* Selection Header & Actions */}
+            <div className="flex items-center justify-between gap-2 px-1 pt-0.5">
               <div className="flex items-center gap-1.5">
                 <Button
                   variant="outline"
@@ -513,7 +481,7 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                     for (let i = 1; i <= totalSheets; i++) pages.add(i);
                     setSelectedPages(pages);
                   }}
-                  className="h-6 px-2 text-[10.5px] gap-1 cursor-pointer hover:bg-muted font-medium"
+                  className="h-6.5 px-2 text-[11px] gap-1 cursor-pointer hover:bg-muted font-medium"
                 >
                   <CheckCheckIcon className="size-3 text-primary" />
                   <span>Select All</span>
@@ -522,7 +490,7 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                   variant="outline"
                   size="xs"
                   onClick={() => setSelectedPages(new Set())}
-                  className="h-6 px-2 text-[10.5px] gap-1 cursor-pointer hover:bg-muted font-medium text-muted-foreground"
+                  className="h-6.5 px-2 text-[11px] gap-1 cursor-pointer hover:bg-muted font-medium text-muted-foreground"
                 >
                   <SquareIcon className="size-3" />
                   <span>Clear</span>
@@ -534,8 +502,8 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
               </Badge>
             </div>
 
-            {/* Sheet Cards Grid */}
-            <div className="flex-1 min-h-[180px] border border-border/70 rounded-xl bg-muted/20 overflow-y-auto p-2.5 grid grid-cols-2 gap-2.5">
+            {/* Sheet Selector Grid */}
+            <div className="flex-1 min-h-[220px] border border-border/70 rounded-xl bg-muted/10 overflow-y-auto p-2 grid grid-cols-2 gap-2">
               {Array.from({ length: totalSheets }).map((_, index) => {
                 const pageNum = index + 1;
                 const isSelected = selectedPages.has(pageNum);
@@ -551,74 +519,29 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                         return next;
                       });
                     }}
-                    className={`group relative flex flex-col justify-between rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden p-2.5 select-none ${
+                    className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-150 cursor-pointer select-none ${
                       isSelected
-                        ? 'border-primary bg-primary/[0.06] ring-1 ring-primary/40 shadow-xs'
-                        : 'border-border/70 bg-card hover:border-border hover:bg-muted/40 hover:shadow-2xs'
+                        ? 'border-primary/60 bg-primary/[0.08] text-foreground font-semibold shadow-2xs'
+                        : 'border-border/60 bg-card hover:border-border hover:bg-muted/40 text-muted-foreground'
                     }`}
                   >
-                    {/* Top Row: Page Title + Checkbox */}
-                    <div className="flex items-center justify-between gap-1.5 z-10">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-semibold text-foreground">
-                          Sheet {pageNum}
-                        </span>
-                      </div>
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={(checked) => {
-                          setSelectedPages((prev) => {
-                            const next = new Set(prev);
-                            if (checked) next.add(pageNum);
-                            else next.delete(pageNum);
-                            return next;
-                          });
-                        }}
-                        className="size-4 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                        onClick={(e) => e.stopPropagation()}
-                      />
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">Sheet {pageNum}</span>
                     </div>
 
-                    {/* Miniature Blueprint Graphic */}
-                    <div className="my-2 h-20 rounded-lg border border-border/60 bg-background/80 relative overflow-hidden flex flex-col justify-between p-1.5 shadow-inner transition-transform group-hover:scale-[1.02]">
-                      {/* Blueprint Grid Background */}
-                      <div className="absolute inset-0 bg-[radial-gradient(var(--border)_1px,transparent_1px)] [background-size:6px_6px] opacity-60" />
-
-                      {/* Stylized CAD Table Preview Lines */}
-                      <div className="relative z-1 space-y-1">
-                        <div className="h-1.5 bg-primary/20 rounded-xs w-3/4" />
-                        <div className="grid grid-cols-3 gap-0.5">
-                          <div className="h-1 bg-muted-foreground/20 rounded-xs" />
-                          <div className="h-1 bg-muted-foreground/20 rounded-xs" />
-                          <div className="h-1 bg-muted-foreground/20 rounded-xs" />
-                        </div>
-                        <div className="grid grid-cols-3 gap-0.5">
-                          <div className="h-1 bg-muted-foreground/20 rounded-xs" />
-                          <div className="h-1 bg-muted-foreground/20 rounded-xs" />
-                          <div className="h-1 bg-muted-foreground/20 rounded-xs" />
-                        </div>
-                      </div>
-
-                      {/* Title block mock */}
-                      <div className="relative z-1 self-end bg-muted/80 border border-border/70 rounded-xs px-1 py-0.5 text-[7px] font-mono text-muted-foreground">
-                        DWG-{pageNum}
-                      </div>
-
-                      {/* Selected Glow Corner */}
-                      {isSelected && (
-                        <div className="absolute top-0 right-0 w-8 h-8 bg-gradient-to-bl from-primary/30 to-transparent pointer-events-none" />
-                      )}
-                    </div>
-
-                    {/* Bottom Status */}
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground z-10">
-                      <span className={isSelected ? 'text-primary font-medium' : ''}>
-                        {isSelected ? 'Selected' : 'Click to select'}
-                      </span>
-                      <span className="font-mono text-[9px] opacity-70">
-                        P.{pageNum}
-                      </span>
-                    </div>
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(checked) => {
+                        setSelectedPages((prev) => {
+                          const next = new Set(prev);
+                          if (checked) next.add(pageNum);
+                          else next.delete(pageNum);
+                          return next;
+                        });
+                      }}
+                      className="size-4 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                      onClick={(e) => e.stopPropagation()}
+                    />
                   </div>
                 );
               })}
