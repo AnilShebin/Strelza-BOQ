@@ -27,6 +27,10 @@ import {
   PanelRightOpenIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
+  MaximizeIcon,
+  MinimizeIcon,
+  MoveHorizontalIcon,
+  ScanIcon,
 } from 'lucide-react';
 
 interface PDFToolbarProps {
@@ -45,6 +49,7 @@ interface PDFToolbarProps {
   zoomScale: number;
   handleZoomSelect: (mode: 'fit-width' | 'fit-page' | number) => void;
   toggleFullscreen?: () => void;
+  isFullscreen?: boolean;
   showExtractionPanel: boolean;
   setShowExtractionPanel: (show: boolean) => void;
   showThumbnails?: boolean;
@@ -72,6 +77,8 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
   zoomMode,
   zoomScale,
   handleZoomSelect,
+  toggleFullscreen,
+  isFullscreen = false,
   showExtractionPanel,
   setShowExtractionPanel,
   showThumbnails = false,
@@ -169,8 +176,8 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
         </div>
       </div>
 
-      {/* Right / End Section: Tool Modes, Zoom Controls, Rotation & Extraction */}
-      <div className="flex items-center gap-2 shrink-0 ml-auto">
+      {/* Right / End Section: Tool Modes, Fit Controls, Zoom, Rotation, Fullscreen & Extraction */}
+      <div className="flex items-center gap-1.5 shrink-0 ml-auto">
         {/* Interaction Mode Group */}
         <div className="flex items-center p-0.5 rounded-lg bg-muted/60 border border-border/60">
           <Button
@@ -261,8 +268,41 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
 
         <div className="h-4 w-px bg-border/60 mx-0.5" />
 
+        {/* Dedicated Fit Width & Fit Page Buttons */}
+        <Button
+          variant={zoomMode === 'fit-width' ? 'secondary' : 'ghost'}
+          size="icon-xs"
+          disabled={!pdfBase64}
+          onClick={() => handleZoomSelect('fit-width')}
+          className={`size-7 rounded-md cursor-pointer ${
+            zoomMode === 'fit-width'
+              ? 'bg-primary/10 text-primary font-semibold'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+          title="Fit Width"
+        >
+          <MoveHorizontalIcon className="size-3.5" />
+        </Button>
+
+        <Button
+          variant={zoomMode === 'fit-page' ? 'secondary' : 'ghost'}
+          size="icon-xs"
+          disabled={!pdfBase64}
+          onClick={() => handleZoomSelect('fit-page')}
+          className={`size-7 rounded-md cursor-pointer ${
+            zoomMode === 'fit-page'
+              ? 'bg-primary/10 text-primary font-semibold'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+          title="Fit Page"
+        >
+          <ScanIcon className="size-3.5" />
+        </Button>
+
+        <div className="h-4 w-px bg-border/60 mx-0.5" />
+
         {/* Zoom Controls */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <Button
             variant="ghost"
             size="icon-xs"
@@ -289,7 +329,7 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-36 text-xs">
               <DropdownMenuLabel className="text-[10px] text-muted-foreground font-semibold uppercase">
-                Zoom Modes
+                Zoom Presets
               </DropdownMenuLabel>
               <DropdownMenuItem onClick={() => handleZoomSelect('fit-width')}>
                 Fit Width
@@ -344,6 +384,28 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
         >
           <RotateCwIcon className="size-3.5" />
         </Button>
+
+        {/* Fullscreen Tool */}
+        {toggleFullscreen && (
+          <Button
+            variant={isFullscreen ? 'secondary' : 'ghost'}
+            size="icon-xs"
+            disabled={!pdfBase64}
+            onClick={toggleFullscreen}
+            className={`size-7 rounded-md cursor-pointer ${
+              isFullscreen
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen Mode'}
+          >
+            {isFullscreen ? (
+              <MinimizeIcon className="size-3.5" />
+            ) : (
+              <MaximizeIcon className="size-3.5" />
+            )}
+          </Button>
+        )}
 
         <div className="h-4 w-px bg-border/60 mx-0.5" />
 

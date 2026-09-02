@@ -95,6 +95,24 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   const [panelWidth, setPanelWidth] = useState(480);
   const [isResizing, setIsResizing] = useState(false);
   const [columnWidths, setColumnWidths] = useState<Record<string, number[]>>({});
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!viewerRef.current) return;
+    if (!document.fullscreenElement) {
+      viewerRef.current.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, []);
 
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -301,6 +319,8 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
             ? (setZoomMode('custom'), setZoomScale(m))
             : setZoomMode(m)
         }
+        toggleFullscreen={toggleFullscreen}
+        isFullscreen={isFullscreen}
         showExtractionPanel={showExtractionPanel}
         setShowExtractionPanel={setShowExtractionPanel}
         showThumbnails={showThumbnails}
