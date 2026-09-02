@@ -1,7 +1,7 @@
 """
-PDF and Drawing Rendering API Router with Docling Extraction.
+PDF and Drawing Rendering API Router with Proven Fast AI Document Extractor.
 Provides endpoints for uploading PDFs, rendering pages, generating thumbnails,
-and extracting structured schedule tables via Docling.
+and extracting structured schedule tables via Gemini Vision + PyMuPDF.
 """
 import os
 import shutil
@@ -12,7 +12,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException, Query, Response
 
 from core.config import UPLOADS_DIR
 from core.pdf_engine import PDFEngine
-from services.extraction_service import extraction_service
+from core.document_extractor import extract_document_elements
 
 router = APIRouter(prefix="/api/pdf", tags=["PDF Engine & Rendering"])
 
@@ -75,7 +75,7 @@ async def upload_pdf(file: UploadFile = File(...)) -> Dict[str, Any]:
 async def extract_pdf_tables(req: ExtractRequest) -> Dict[str, Any]:
     """
     Extracts structured CAD schedule tables, equipment lists, and bounding boxes
-    using the Docling neural TableFormer engine.
+    using the proven high-speed Gemini Vision + PyMuPDF engine.
     """
     pdf_path = req.path
 
@@ -108,17 +108,22 @@ async def extract_pdf_tables(req: ExtractRequest) -> Dict[str, Any]:
     if not pdf_path or not os.path.exists(pdf_path):
         raise HTTPException(
             status_code=404,
-            detail=f"PDF document '{req.name or req.path}' not found on server. Please upload or include base64 data."
+            detail=f"PDF document '{req.name or req.path}' not found on server."
         )
 
     try:
-        result = extraction_service.extract_document(
-            pdf_path=pdf_path,
-            selected_pages=req.pages
-        )
-        return result
+        result = extract_document_elements(pdf_path, selected_pages=req.pages)
+        elements = result.get("elements", [])
+        return {
+            "success": True,
+            "filename": os.path.basename(pdf_path),
+            "elements": elements,
+            "totalElements": len(elements),
+            "raw_items": result.get("raw_items", [])
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Docling extraction failed: {str(e)}")
+        print(f"[PDF Router] Extraction error: {e}")
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
 
 
 @router.get("/render-page")
