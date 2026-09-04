@@ -68,16 +68,23 @@ def get_entity_resolver() -> EntityResolver:
     return _GLOBAL_RESOLVER
 
 
-from services.action_classifier import classify_commercial_action
-
-
 def extract_action_and_qty(raw_text: str, default_action: str = "INSTALL") -> Tuple[str, float]:
     """
-    Deterministically parses action (INSTALL, REMOVE, RELOCATE, REPLACE, RETAIN, PASSIVE_CONTEXT)
-    and quantity from statement text using the Terminal Operative Verb Principle.
+    Deterministically parses action (INSTALL, REMOVE, RELOCATE, REPLACE, RETAIN)
+    and quantity from statement text.
     """
-    action, is_billable, reason = classify_commercial_action(raw_text, default_action=default_action)
     text_upper = raw_text.upper()
+    action = default_action
+    if any(w in text_upper for w in ["REMOVE", "RECOVER", "DISMANTLE", "DECOMMISSION"]):
+        action = "REMOVE"
+    elif any(w in text_upper for w in ["RELOCATE", "SHIFT", "MOVE"]):
+        action = "RELOCATE"
+    elif any(w in text_upper for w in ["REPLACE", "SWAP"]):
+        action = "REPLACE"
+    elif any(w in text_upper for w in ["RETAIN", "REUSE", "EXISTING"]) and not any(w in text_upper for w in ["REMOVE", "RECOVER"]):
+        action = "RETAIN"
+    elif any(w in text_upper for w in ["INSTALL", "PROPOSED", "NEW"]):
+        action = "INSTALL"
 
     # Quantity extraction
     qty = 1.0
