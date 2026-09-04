@@ -2138,22 +2138,27 @@ def get_rules_history():
     return [dict(r) for r in rows]
 
 # ==========================================
-# EQUIPMENT MASTER CATALOG ENDPOINTS
+# EQUIPMENT CATALOG ENDPOINTS
 # ==========================================
 
 @app.get("/api/equipment-catalog")
 def list_equipment_catalog(
-    equipment_class: Optional[str] = None,
-    manufacturer: Optional[str] = None,
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    category: Optional[str] = None
 ):
-    """Lists all canonical equipment items with optional filtering."""
+    """Lists all equipment items with Sl.No, Product Name, and Product Category."""
     from services.equipment_service import get_all_equipment
-    return get_all_equipment(equipment_class=equipment_class, manufacturer=manufacturer, search=search)
+    return get_all_equipment(search=search, category=category)
+
+@app.get("/api/equipment-catalog/categories")
+def list_equipment_categories():
+    """Retrieves unique equipment categories."""
+    from services.equipment_service import get_equipment_categories
+    return get_equipment_categories()
 
 @app.get("/api/equipment-catalog/{item_id}")
 def get_equipment_item(item_id: int):
-    """Retrieves a single canonical equipment record by ID."""
+    """Retrieves a single equipment record by ID."""
     from services.equipment_service import get_equipment_by_id
     item = get_equipment_by_id(item_id)
     if not item:
@@ -2162,16 +2167,24 @@ def get_equipment_item(item_id: int):
 
 @app.post("/api/equipment-catalog")
 def create_equipment_item(payload: Dict[str, Any]):
-    """Creates a new canonical equipment item with aliases."""
+    """Creates a new equipment record."""
     from services.equipment_service import create_equipment
-    item_id = create_equipment(payload)
+    product_name = str(payload.get("product_name") or payload.get("name") or payload.get("model_name") or "").strip()
+    product_category = str(payload.get("product_category") or payload.get("category") or "").strip()
+    if not product_name:
+        raise HTTPException(status_code=400, detail="Product name is required.")
+    item_id = create_equipment(product_name=product_name, product_category=product_category)
     return {"status": "success", "id": item_id}
 
 @app.put("/api/equipment-catalog/{item_id}")
 def update_equipment_item(item_id: int, payload: Dict[str, Any]):
-    """Updates an existing canonical equipment record."""
+    """Updates an existing equipment record."""
     from services.equipment_service import update_equipment
-    success = update_equipment(item_id, payload)
+    product_name = str(payload.get("product_name") or payload.get("name") or payload.get("model_name") or "").strip()
+    product_category = str(payload.get("product_category") or payload.get("category") or "").strip()
+    if not product_name:
+        raise HTTPException(status_code=400, detail="Product name is required.")
+    success = update_equipment(item_id, product_name=product_name, product_category=product_category)
     if not success:
         raise HTTPException(status_code=404, detail="Equipment item not found or update failed.")
     return {"status": "success", "id": item_id}
@@ -2184,26 +2197,6 @@ def delete_equipment_item(item_id: int):
     if not success:
         raise HTTPException(status_code=404, detail="Equipment item not found.")
     return {"status": "success", "id": item_id}
-
-@app.post("/api/equipment-catalog/seed")
-def seed_equipment_catalog_endpoint(force: bool = False):
-    """Seeds default canonical equipment into the database."""
-    from services.equipment_service import seed_default_equipment_catalog
-    count = seed_default_equipment_catalog(force=force)
-    return {"status": "success", "seeded_count": count}
-
-@app.post("/api/equipment-catalog/add-alias")
-def add_equipment_alias_endpoint(payload: Dict[str, Any]):
-    """Adds a new drawing alias pattern to an existing equipment record."""
-    from services.equipment_service import add_alias_to_equipment
-    canonical_id = payload.get("canonical_id")
-    new_alias = payload.get("alias")
-    if not canonical_id or not new_alias:
-        raise HTTPException(status_code=400, detail="canonical_id and alias are required.")
-    success = add_alias_to_equipment(canonical_id, new_alias)
-    if not success:
-        raise HTTPException(status_code=404, detail=f"Canonical equipment '{canonical_id}' not found.")
-    return {"status": "success", "canonical_id": canonical_id, "alias": new_alias}
 
 if __name__ == "__main__":
     import uvicorn
