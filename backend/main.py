@@ -17,11 +17,9 @@ import json
 
 from pdf_engine import PDFEngine
 from core.document_extractor import extract_document_elements
-from services.matcher import (
+from services.excel_service import (
     load_master_price_list,
     save_master_price_list,
-    match_item_to_price_list,
-    clear_user_mappings,
     update_price_item_in_excel,
     clear_price_item_in_excel,
     add_price_item_to_excel,
@@ -620,14 +618,6 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
                     })
 
             for idx, c_item in enumerate(candidate_items):
-                matched = match_item_to_price_list(c_item, price_list)
-                sor = matched.get("code", "UNQUOTED") if matched else "UNQUOTED"
-                name = matched.get("name", c_item["model"]) if matched else c_item["model"]
-                rate = float(matched.get("rate", 0.0)) if matched else 0.0
-                unit = matched.get("unit", "each") if matched else "each"
-                r_idx = matched.get("row_idx") if matched else None
-                sim = float(matched.get("similarity", 75.0)) if matched else 50.0
-
                 mapped_boq_items.append({
                     "item_id": f"boq_{idx:03d}",
                     "equipment_type": c_item.get("equipment_type", "EQUIPMENT"),
@@ -636,18 +626,18 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "quantity": c_item["quantity"],
                     "source_sheet": c_item["source_sheet"],
                     "raw_text": c_item["raw_text"],
-                    "sor_code": sor,
-                    "item_name": name,
-                    "unit": unit,
-                    "rate": rate,
-                    "total_cost": rate * c_item["quantity"],
-                    "similarity": sim,
-                    "auto_matched": bool(matched),
-                    "row_idx": r_idx,
-                    "comment": "Matched via Catalog Fuzzy Matcher",
-                    "matched_by_rule": "Catalog Matcher",
-                    "confidence_score": sim,
-                    "confidence_level": "HIGH" if sim >= 80 else "MEDIUM",
+                    "sor_code": "UNQUOTED",
+                    "item_name": c_item["model"],
+                    "unit": "each",
+                    "rate": 0.0,
+                    "total_cost": 0.0,
+                    "similarity": 100.0,
+                    "auto_matched": False,
+                    "row_idx": None,
+                    "comment": "Extracted from Drawing",
+                    "matched_by_rule": "",
+                    "confidence_score": 100.0,
+                    "confidence_level": "HIGH",
                     "evidence": {
                         "source_sheet": c_item["source_sheet"],
                         "source_table": "Takeoff Table",
@@ -658,12 +648,12 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
                         "action": c_item["action"],
                         "quantity": c_item["quantity"],
                         "entity_class": c_item.get("equipment_type", "EQUIPMENT"),
-                        "target_sor": sor,
-                        "target_name": name,
-                        "rate": rate,
+                        "target_sor": "UNQUOTED",
+                        "target_name": c_item["model"],
+                        "rate": 0.0,
                         "validation_status": "VERIFIED_IN_LAYOUT",
-                        "confidence_score": sim,
-                        "confidence_level": "HIGH" if sim >= 80 else "MEDIUM",
+                        "confidence_score": 100.0,
+                        "confidence_level": "HIGH",
                         "raw_text": c_item["raw_text"]
                     },
                     "sources": [],
@@ -967,15 +957,6 @@ def log_correction(
         )
         conn.commit()
         conn.close()
-        
-        # Also cache the correction in user mappings so it acts as a prior correction
-        from services.matcher import save_user_mapping
-        save_user_mapping(
-            payload.original_description.upper(),
-            payload.corrected_code.upper(),
-            payload.corrected_name,
-            payload.corrected_rate
-        )
         return {"status": "success", "message": "Correction logged successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to log correction: {str(e)}")
@@ -1587,7 +1568,7 @@ def get_price_list_template():
     import io
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from services.matcher import write_instructions_sheet
+    from services.excel_service import write_instructions_sheet
     
     wb = openpyxl.Workbook()
     sheet = wb.active
@@ -1685,7 +1666,7 @@ def export_priced_excel(price_list_id: Optional[int] = None, payload: Optional[E
 @app.get("/api/boq-items")
 def get_boq_items(price_list_id: Optional[int] = None) -> Dict[str, Any]:
     """Loads and returns the active BOQ items (drawn items mapped to SOR + unquoted)."""
-    from services.matcher import load_boq_items
+    from services.excel_service import load_boq_items
     file_path = get_price_list_path(price_list_id)
     return {
         "items": load_boq_items(price_list_id),
@@ -1714,9 +1695,8 @@ def update_boq_item_cell(payload: CellUpdateModel, price_list_id: Optional[int] 
         
     conn.commit()
     conn.close()
-    clear_user_mappings()
     
-    from services.matcher import load_boq_items
+    from services.excel_service import load_boq_items
     file_path = get_price_list_path(price_list_id)
     return {
         "status": "success",
@@ -1733,9 +1713,8 @@ def clear_boq_quantities(price_list_id: Optional[int] = None) -> Dict[str, Any]:
     cursor.execute("DELETE FROM boq_items WHERE price_list_id = ?", (price_list_id or 1,))
     conn.commit()
     conn.close()
-    clear_user_mappings()
     
-    from services.matcher import load_boq_items
+    from services.excel_service import load_boq_items
     file_path = get_price_list_path(price_list_id)
     return {
         "status": "success",
@@ -1750,7 +1729,6 @@ def update_price_list_cell(payload: CellUpdateModel, price_list_id: Optional[int
     success = write_cell_value_to_excel(file_path, payload.row_idx, payload.col_idx, payload.value)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to write value to database cell.")
-    clear_user_mappings()
     return {"status": "success", **get_price_list_response(price_list_id)}
 
 @app.post("/api/price-list/clear-quantities")
@@ -1764,8 +1742,6 @@ def clear_quantities(price_list_id: Optional[int] = None) -> Dict[str, Any]:
     # Batch action: sync database state to disk
     resolved_id = get_id_from_path(file_path) or get_default_price_list_id()
     sync_db_to_active_excel(resolved_id)
-    
-    clear_user_mappings()
     return {"status": "success", **get_price_list_response(price_list_id)}
 
 @app.post("/api/price-list/restore-mapped-items")
