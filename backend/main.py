@@ -2164,47 +2164,38 @@ def get_equipment_item(item_id: int):
 def create_equipment_item(payload: Dict[str, Any]):
     """Creates a new canonical equipment item with aliases."""
     from services.equipment_service import create_equipment
-    from services.entity_resolution import get_entity_resolver
     item_id = create_equipment(payload)
-    get_entity_resolver().reload()
     return {"status": "success", "id": item_id}
 
 @app.put("/api/equipment-catalog/{item_id}")
 def update_equipment_item(item_id: int, payload: Dict[str, Any]):
     """Updates an existing canonical equipment record."""
     from services.equipment_service import update_equipment
-    from services.entity_resolution import get_entity_resolver
     success = update_equipment(item_id, payload)
     if not success:
         raise HTTPException(status_code=404, detail="Equipment item not found or update failed.")
-    get_entity_resolver().reload()
     return {"status": "success", "id": item_id}
 
 @app.delete("/api/equipment-catalog/{item_id}")
 def delete_equipment_item(item_id: int):
     """Deletes an equipment record from the catalog."""
     from services.equipment_service import delete_equipment
-    from services.entity_resolution import get_entity_resolver
     success = delete_equipment(item_id)
     if not success:
         raise HTTPException(status_code=404, detail="Equipment item not found.")
-    get_entity_resolver().reload()
     return {"status": "success", "id": item_id}
 
 @app.post("/api/equipment-catalog/seed")
 def seed_equipment_catalog_endpoint(force: bool = False):
     """Seeds default canonical equipment into the database."""
     from services.equipment_service import seed_default_equipment_catalog
-    from services.entity_resolution import get_entity_resolver
     count = seed_default_equipment_catalog(force=force)
-    get_entity_resolver().reload()
     return {"status": "success", "seeded_count": count}
 
 @app.post("/api/equipment-catalog/add-alias")
 def add_equipment_alias_endpoint(payload: Dict[str, Any]):
     """Adds a new drawing alias pattern to an existing equipment record."""
     from services.equipment_service import add_alias_to_equipment
-    from services.entity_resolution import get_entity_resolver
     canonical_id = payload.get("canonical_id")
     new_alias = payload.get("alias")
     if not canonical_id or not new_alias:
@@ -2212,7 +2203,6 @@ def add_equipment_alias_endpoint(payload: Dict[str, Any]):
     success = add_alias_to_equipment(canonical_id, new_alias)
     if not success:
         raise HTTPException(status_code=404, detail=f"Canonical equipment '{canonical_id}' not found.")
-    get_entity_resolver().reload()
     return {"status": "success", "canonical_id": canonical_id, "alias": new_alias}
 
 if __name__ == "__main__":
