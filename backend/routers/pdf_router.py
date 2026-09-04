@@ -111,15 +111,69 @@ async def extract_pdf_tables(req: ExtractRequest) -> Dict[str, Any]:
             detail=f"PDF document '{req.name or req.path}' not found on server."
         )
 
+    clean_stem = os.path.basename(pdf_path).replace("_cleaned", "").replace(".pdf", "").strip().lower()
+    doc_cache = UPLOADS_DIR / f"{clean_stem}_extracted.json"
+
+    # Fast cache retrieval if full document was already extracted
+    if not req.pages and doc_cache.exists():
+        try:
+            import json
+            with open(doc_cache, "r", encoding="utf-8") as f:
+                cached_data = json.load(f)
+            cached_elements = cached_data.get("elements", [])
+            if cached_elements:
+                print(f"[PDF Router] Serving {len(cached_elements)} cached elements for {clean_stem}")
+                return {
+                    "success": True,
+                    "filename": os.path.basename(pdf_path),
+                    "elements": cached_elements,
+                    "totalElements": len(cached_elements),
+                    "raw_items": cached_data.get("raw_items", [])
+                }
+        except Exception as e:
+            print(f"[PDF Router] Cache read error: {e}")
+
     try:
         result = extract_document_elements(pdf_path, selected_pages=req.pages)
         elements = result.get("elements", [])
+        raw_items = result.get("raw_items", [])
+
+        # If specific pages were re-extracted, merge into existing cache
+        if req.pages and doc_cache.exists():
+            try:
+                import json
+                with open(doc_cache, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+                other_elements = [el for el in existing.get("elements", []) if el.get("page") not in req.pages]
+                elements = other_elements + elements
+            except Exception:
+                pass
+
+        # Save to per-document cache file
+        try:
+            import json
+            cache_payload = {
+                "pdf_path": pdf_path,
+                "filename": os.path.basename(pdf_path),
+                "elements": elements,
+                "raw_items": raw_items
+            }
+            with open(doc_cache, "w", encoding="utf-8") as f:
+                json.dump(cache_payload, f, indent=2)
+
+            # Also update global extracted_tables.json
+            global_cache = os.path.join(os.path.dirname(os.path.dirname(__file__)), "extracted_tables.json")
+            with open(global_cache, "w", encoding="utf-8") as f:
+                json.dump(cache_payload, f, indent=2)
+        except Exception as e:
+            print(f"[PDF Router] Error caching extraction to disk: {e}")
+
         return {
             "success": True,
             "filename": os.path.basename(pdf_path),
             "elements": elements,
             "totalElements": len(elements),
-            "raw_items": result.get("raw_items", [])
+            "raw_items": raw_items
         }
     except Exception as e:
         print(f"[PDF Router] Extraction error: {e}")

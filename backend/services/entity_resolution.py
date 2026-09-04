@@ -68,28 +68,20 @@ def get_entity_resolver() -> EntityResolver:
     return _GLOBAL_RESOLVER
 
 
+from services.action_classifier import classify_commercial_action
+
+
 def extract_action_and_qty(raw_text: str, default_action: str = "INSTALL") -> Tuple[str, float]:
     """
-    Deterministically parses action (INSTALL, REMOVE, RELOCATE, REPLACE) and quantity from statement text.
+    Deterministically parses action (INSTALL, REMOVE, RELOCATE, REPLACE, RETAIN, PASSIVE_CONTEXT)
+    and quantity from statement text using the Terminal Operative Verb Principle.
     """
+    action, is_billable, reason = classify_commercial_action(raw_text, default_action=default_action)
     text_upper = raw_text.upper()
-    
-    # 1. Action determination
-    action = default_action
-    if any(w in text_upper for w in ["RECOVER AND REPLACE", "REPLACE", "REPLACED WITH"]):
-        action = "REPLACE"
-    elif any(w in text_upper for w in ["REMOVE", "REMOVAL", "RECOVER", "DECOMMISSION", "DISMANTLE", "DE-RIG"]):
-        action = "REMOVE"
-    elif any(w in text_upper for w in ["RELOCATE", "RELOCATION", "MOVE", "RE-LOCATE"]):
-        action = "RELOCATE"
-    elif any(w in text_upper for w in ["INSTALL", "PROPOSED", "NEW", "ADD", "SUPPLY AND INSTALL"]):
-        action = "INSTALL"
-    elif any(w in text_upper for w in ["EXISTING", "TO REMAIN", "RETAIN"]):
-        action = "RETAIN"
 
-    # 2. Quantity extraction
+    # Quantity extraction
     qty = 1.0
-    # Match patterns like "3 OFF", "3x", "3 NO.", "QTY: 3", "(3 OFF)"
+    # Match patterns like "(3 OFF A1, A2 & A3)", "3 OFF", "3x", "3 NO.", "QTY: 3", "(3 OFF)"
     qty_match = re.search(r'\(?(\d+(?:\.\d+)?)\s*(?:OFF|X|QTY|NOS|NO\.)\b', text_upper)
     if qty_match:
         try:
@@ -98,7 +90,7 @@ def extract_action_and_qty(raw_text: str, default_action: str = "INSTALL") -> Tu
             qty = 1.0
     else:
         # Match standalone number before equipment (e.g. "INSTALL 3 ERICSSON...")
-        lead_match = re.search(r'\b(?:INSTALL|REMOVE|RECOVER)\s+(\d+(?:\.\d+)?)\s+', text_upper)
+        lead_match = re.search(r'\b(?:INSTALL|REMOVE|RECOVER|PROPOSED)\s+(\d+(?:\.\d+)?)\s+', text_upper)
         if lead_match:
             try:
                 qty = float(lead_match.group(1))
@@ -108,19 +100,39 @@ def extract_action_and_qty(raw_text: str, default_action: str = "INSTALL") -> Tu
     return action, qty
 
 
+def extract_all_physical_ids(text: str) -> List[str]:
+    """
+    Extracts all physical equipment tags from text, e.g.:
+    '(3 OFF A1, A2 & A3)' -> ['A1', 'A2', 'A3']
+    'A4 & A6' -> ['A4', 'A6']
+    """
+    if not text:
+        return []
+
+    # Find all antenna tags like A1, A2, A15, A1 (OLD), RRU-1, etc.
+    matches = re.findall(r'\b(A\d+)\b', text, re.IGNORECASE)
+    cleaned = []
+    for m in matches:
+        tag = m.upper()
+        if tag not in cleaned:
+            cleaned.append(tag)
+            
+    # Also check generic IDs like ID 16, ITEM 34
+    if not cleaned:
+        id_matches = re.findall(r'\b(?:ID|ITEM|NO\.)\s*[:#]?\s*(\w+)\b', text, re.IGNORECASE)
+        for m in id_matches:
+            tag = m.upper()
+            if tag not in cleaned:
+                cleaned.append(tag)
+
+    return cleaned
+
+
 def extract_physical_id(text: str) -> str:
-    """Extracts physical identifiers like Antenna IDs (A1, A5, A15), Sector (S1, S2), or Row IDs (16, 34)."""
-    # Match Antenna IDs like A1, A5, A9, A15
-    ant_match = re.search(r'\b(A\d+)\b', text, re.IGNORECASE)
-    if ant_match:
-        return ant_match.group(1).upper()
-        
-    # Match "with ID 16" or "ITEM 34"
-    id_match = re.search(r'\b(?:ID|ITEM|NO\.)\s*[:#]?\s*(\w+)\b', text, re.IGNORECASE)
-    if id_match:
-        return id_match.group(1).upper()
-        
-    return ""
+    """Extracts primary physical identifier like Antenna ID (A1, A5) or Item ID."""
+    all_ids = extract_all_physical_ids(text)
+    return all_ids[0] if all_ids else ""
+
 
 
 def resolve_drawing_statement(
@@ -173,63 +185,74 @@ def aggregate_resolved_entities(entities: List[Dict[str, Any]]) -> List[Dict[str
     """
     Performs deterministic multi-source deduplication and aggregation:
     - Items with the same (canonical_id, action, physical_id) across different sheets are consolidated.
-    - Quantities are summed accurately.
-    - Sources and provenances are merged into a comprehensive audit trail.
+    - Passive context and non-billable items are excluded.
+    - Configuration Table items establish canonical count; layout/elevation references attach as evidence.
     """
     grouped: Dict[str, Dict[str, Any]] = {}
-    
+    registered_tags: Dict[str, str] = {}  # tag -> canonical group key
+
     for item in entities:
-        # Ignore existing/retain items from BOQ pricing
-        if item["action"] == "RETAIN":
+        action = item.get("action", "INSTALL")
+        # Ignore passive context and retain/existing items from BOQ pricing
+        if action in ["RETAIN", "PASSIVE_CONTEXT"]:
             continue
-            
-        canonical_id = item["canonical_id"]
-        action = item["action"]
+
+        canonical_id = item.get("canonical_id", "EQ-UNKNOWN")
         physical_id = item.get("physical_id", "")
-        
-        # If item has a specific physical ID (e.g. A1, A5, ID 34), group by that ID to deduplicate notes vs tables
+        all_tags = extract_all_physical_ids(item.get("original_statement", ""))
+        prov = item.get("provenance", {})
+        is_table = prov.get("source_table") != "DRAWING NOTES"
+
+        # Check if this item references tags that are ALREADY accounted for by a table
+        if not is_table and all_tags:
+            already_registered = [t for t in all_tags if f"{t}|{action}" in registered_tags]
+            if len(already_registered) == len(all_tags):
+                # All referenced tags are already accounted for in the schedule table!
+                # Attach this layout note as supporting evidence to each referenced entity
+                for t in already_registered:
+                    key = registered_tags[f"{t}|{action}"]
+                    if key in grouped:
+                        grouped[key]["sources"].append(item)
+                continue
+
+        # Build group key
         if physical_id:
             group_key = f"PHY_{physical_id}|{action}"
+            registered_tags[f"{physical_id}|{action}"] = group_key
         else:
-            # Otherwise, distinguish by unique row provenance
-            prov = item.get("provenance", {})
             group_key = f"{canonical_id}|{action}|{prov.get('source_sheet', '')}|{prov.get('source_row', '')}"
-            
+
         if group_key not in grouped:
             grouped[group_key] = {
                 "canonical_id": canonical_id,
-                "model_name": item["model_name"],
-                "equipment_class": item["equipment_class"],
-                "category": item["category"],
+                "model_name": item.get("model_name", ""),
+                "equipment_class": item.get("equipment_class", "EQUIPMENT"),
+                "category": item.get("category", "General"),
                 "action": action,
-                "quantity": float(item["quantity"]),
+                "quantity": float(item.get("quantity", 1.0)),
                 "physical_id": physical_id,
-                "attributes": item["attributes"],
-                "is_known_equipment": item["is_known_equipment"],
-                "original_statement": item["original_statement"],
+                "attributes": item.get("attributes", {}),
+                "is_known_equipment": item.get("is_known_equipment", False),
+                "original_statement": item.get("original_statement", ""),
                 "sources": [item]
             }
         else:
-            # Merge duplicate occurrence
             existing = grouped[group_key]
             existing["sources"].append(item)
-            
-            # If incoming item has a known specific canonical ID, upgrade existing record
-            if item["is_known_equipment"] and not existing["is_known_equipment"]:
-                existing["canonical_id"] = item["canonical_id"]
-                existing["model_name"] = item["model_name"]
-                existing["equipment_class"] = item["equipment_class"]
-                existing["category"] = item["category"]
-                existing["attributes"] = item["attributes"]
+
+            if item.get("is_known_equipment") and not existing.get("is_known_equipment"):
+                existing["canonical_id"] = canonical_id
+                existing["model_name"] = item.get("model_name")
+                existing["equipment_class"] = item.get("equipment_class")
+                existing["category"] = item.get("category")
+                existing["attributes"] = item.get("attributes")
                 existing["is_known_equipment"] = True
-            
-            # If the duplicate is a note that merely references the table, do not double-count quantity
-            # Table items take precedence
+
+            # If existing item is from a table and incoming is a drawing note, do not double count
             is_table_existing = any(s.get("provenance", {}).get("source_table") != "DRAWING NOTES" for s in existing["sources"][:-1])
-            is_note_incoming = item.get("provenance", {}).get("source_table") == "DRAWING NOTES"
-            
+            is_note_incoming = not is_table
+
             if not (is_table_existing and is_note_incoming):
-                # Distinct physical occurrence: add quantity
-                existing["quantity"] += float(item["quantity"])
+                existing["quantity"] += float(item.get("quantity", 1.0))
 
     return list(grouped.values())

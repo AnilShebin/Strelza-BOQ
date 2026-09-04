@@ -46,6 +46,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   LayersIcon,
+  SparklesIcon,
 } from 'lucide-react';
 
 interface ShadcnSelectProps {
@@ -155,17 +156,6 @@ const ShadcnSelect: React.FC<ShadcnSelectProps> = ({
     </div>
   );
 };
-const DEFAULT_UNITS = ['EA', 'MTR', 'SET', 'JOB', 'DAY', 'LOT', 'CORE', 'HOUR'];
-const DEFAULT_CATEGORIES = [
-  'Antennas & RRUs',
-  'Power & Feeder',
-  'Structural & Mounts',
-  'Plant & Rigging',
-  'Testing & Handover',
-  'Architectural',
-  'General SOR Pricing Items'
-];
-
 interface BOQDashboardProps {
   pdfName?: string;
   analyzedData: any;
@@ -173,6 +163,7 @@ interface BOQDashboardProps {
   onLoadPDF: () => void;
   onNavigateToPage?: (page: number) => void;
   viewMode: 'boq' | 'pricelist';
+  onGenerateBOQ?: () => void;
 }
 
 export const BOQDashboard: React.FC<BOQDashboardProps> = ({
@@ -182,24 +173,16 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
   onLoadPDF,
   onNavigateToPage,
   viewMode,
+  onGenerateBOQ,
 }) => {
   const viewerRef = useRef<UniversViewerRef>(null);
 
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [hasFile, setHasFile] = useState(true);
   const [viewerError, setViewerError] = useState<string | null>(null);
 
-  // Modal form states
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any | null>(null);
-  const [formCode, setFormCode] = useState('');
-  const [formName, setFormName] = useState('');
-  const [formUnit, setFormUnit] = useState('EA');
-  const [formRate, setFormRate] = useState('');
-  const [formCategory, setFormCategory] = useState('Antennas & RRUs');
-
-  const [existingCategories, setExistingCategories] = useState<string[]>(DEFAULT_CATEGORIES);
-  const [existingUnits, setExistingUnits] = useState<string[]>(DEFAULT_UNITS);
+  const [existingCategories, setExistingCategories] = useState<string[]>([]);
+  const [existingUnits, setExistingUnits] = useState<string[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const [promptState, setPromptState] = useState<{
     isOpen: boolean;
@@ -420,21 +403,19 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
   };
 
   const handleClearAllPriceBookItems = () => {
-    const currentBook = priceLists.find(p => String(p.id) === activePriceListId);
-    if (!currentBook) return;
-    
     setConfirmState({
       isOpen: true,
-      title: 'Clear Price Book Items',
-      message: `Are you sure you want to clear/wipe ALL items inside the Price Book "${currentBook.name}"? This will permanently delete all records. This cannot be undone.`,
+      title: 'Clear Master Price Catalog',
+      message: 'Are you sure you want to clear/wipe ALL items in the Master Price Catalog? This will permanently delete all records. This cannot be undone.',
       onConfirm: async () => {
         try {
-          const res = await fetch(`http://localhost:8000/api/price-list/clear?price_list_id=${activePriceListId}`, { method: 'POST' });
+          const targetId = activePriceListId || '1';
+          const res = await fetch(`http://localhost:8000/api/price-list/clear?price_list_id=${targetId}`, { method: 'POST' });
           if (!res.ok) throw new Error('Failed to clear.');
-          showToast('success', `All items in Price Book cleared.`);
+          showToast('success', 'All items in Master Price Catalog cleared.');
           viewerRef.current?.reload();
         } catch (err) {
-          showToast('error', 'Failed to clear Price Book.');
+          showToast('error', 'Failed to clear Master Price Catalog.');
         } finally {
           setConfirmState(null);
         }
@@ -491,7 +472,8 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
         formData.append('file', file);
         
         try {
-          const res = await fetch(`http://localhost:8000/api/price-list/import?price_list_id=${activePriceListId}`, {
+          const targetId = activePriceListId || '1';
+          const res = await fetch(`http://localhost:8000/api/price-list/import?price_list_id=${targetId}`, {
             method: 'POST',
             body: formData,
           });
@@ -499,8 +481,13 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
             const errJson = await res.json();
             throw new Error(errJson.detail || 'Import failed.');
           }
+          const resData = await res.json();
           showToast('success', 'Price Book successfully imported!');
-          viewerRef.current?.reload();
+          if (resData.items && viewerRef.current) {
+            viewerRef.current.setItems(resData.items);
+          }
+          setRefreshKey((k) => k + 1);
+          await loadDropdownOptions();
         } catch (err: any) {
           showToast('error', err.message || 'Failed to import Price Book.');
         } finally {
@@ -511,13 +498,11 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
   };
 
   const showToast = (type: 'success' | 'error', message: string) => {
-    setToast({ type, message });
     if (type === 'success') {
       sonnerToast.success(message);
     } else {
       sonnerToast.error(message);
     }
-    setTimeout(() => setToast(null), 4000);
   };
 
   const handleResetEstimates = () => {
@@ -546,73 +531,7 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
   };
 
   const handleOpenAddModal = () => {
-    loadDropdownOptions();
-    setEditingItem(null);
-    setFormCode('');
-    setFormName('');
-    setFormUnit('EA');
-    setFormRate('');
-    setFormCategory('Antennas & RRUs');
-    setIsModalOpen(true);
-  };
-
-  const handleOpenEditModal = (item: any) => {
-    loadDropdownOptions();
-    setEditingItem(item);
-    setFormCode(item.code || '');
-    setFormName(item.name || item.header || '');
-    const unitUpper = (item.unit || 'EA').toUpperCase();
-    setFormUnit(DEFAULT_UNITS.includes(unitUpper) ? unitUpper : (item.unit || 'EA'));
-    setFormRate(item.rate !== undefined ? item.rate.toString() : '');
-    setFormCategory(item.category || item.type || 'Antennas & RRUs');
-    setIsModalOpen(true);
-  };
-
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formName.trim()) {
-      showToast('error', 'Item description name is required.');
-      return;
-    }
-    const rateVal = parseFloat(formRate);
-    if (isNaN(rateVal) || rateVal < 0) {
-      showToast('error', 'Please enter a valid positive rate value.');
-      return;
-    }
-
-    const payload = {
-      code: formCode.trim(),
-      name: formName.trim(),
-      unit: formUnit.trim(),
-      rate: rateVal,
-      category: formCategory.trim() || 'General SOR Pricing Items',
-    };
-
-    const url = editingItem
-      ? `http://localhost:8000/api/price-list/${editingItem.row_idx}?price_list_id=${activePriceListId}`
-      : `http://localhost:8000/api/price-list?price_list_id=${activePriceListId}`;
-
-    const method = editingItem ? 'PUT' : 'POST';
-
-    fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to save item.');
-        return res.json();
-      })
-      .then(() => {
-        showToast('success', editingItem ? 'SOR item updated.' : 'New SOR item created.');
-        setIsModalOpen(false);
-        setViewerError(null);
-        viewerRef.current?.reload();
-      })
-      .catch((err) => {
-        console.error(err);
-        showToast('error', err.message || 'Failed to save SOR item.');
-      });
+    viewerRef.current?.openAddItem();
   };
 
   const handleDownloadWorkbook = (onlyPriced: boolean = false) => {
@@ -666,20 +585,6 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
 
   return (
     <div className="flex-1 flex flex-col p-4 md:p-6 bg-background select-none min-h-0 text-foreground animate-fadeIn gap-4 overflow-hidden font-sans">
-      {/* Toast Notification */}
-      {toast && (
-        <div
-          className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-lg border shadow-lg animate-slideIn ${
-            toast.type === 'success'
-              ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-              : 'bg-red-500/10 text-red-500 border-red-500/20'
-          }`}
-        >
-          <Icon name={toast.type === 'success' ? 'check' : 'warning'} size={14} />
-          <span className="text-xs font-semibold">{toast.message}</span>
-        </div>
-      )}
-
       {/* Header Bar */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 shrink-0">
         <div>
@@ -695,70 +600,13 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
 
         <div className="flex items-center gap-2 flex-wrap">
           {viewMode === 'pricelist' && (
-            <div className="flex items-center gap-1">
-              {/* Book Selector Dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 text-xs px-2.5 gap-1.5 cursor-pointer shadow-xs">
-                    <BookOpenIcon className="size-3.5 text-muted-foreground" />
-                    <span>Book: {priceLists.find((p) => String(p.id) === String(activePriceListId))?.name || 'Default'}</span>
-                    <ChevronDownIcon className="size-3 text-muted-foreground ml-0.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 text-xs">
-                  <DropdownMenuLabel className="text-[11px] text-muted-foreground font-normal px-2 py-1">
-                    Select Price Book
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {priceLists.map((p) => (
-                    <DropdownMenuItem
-                      key={p.id}
-                      onClick={() => handlePriceListChange(String(p.id))}
-                      className="flex items-center justify-between text-xs cursor-pointer"
-                    >
-                      <span>{p.name}</span>
-                      {String(p.id) === String(activePriceListId) && <CheckIcon className="size-3.5 ml-2 text-primary" />}
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => handlePriceListChange('CREATE_NEW_BOOK')}
-                    className="text-primary font-medium cursor-pointer"
-                  >
-                    <PlusIcon className="size-3.5 mr-1.5" />
-                    <span>Create New Book</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {priceLists.length > 1 && (
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={handleDeletePriceList}
-                  className="h-8 w-8 text-destructive hover:bg-destructive/10 cursor-pointer shadow-xs"
-                  title="Delete Current Price Book"
-                >
-                  <Trash2Icon className="size-3.5" />
-                </Button>
-              )}
-
-              <Button
-                variant="outline"
-                size="icon-sm"
-                onClick={handleRenamePriceList}
-                className="h-8 w-8 text-muted-foreground hover:text-foreground cursor-pointer shadow-xs"
-                title="Rename Current Price Book"
-              >
-                <EditIcon className="size-3.5" />
-              </Button>
-
+            <div className="flex items-center gap-1.5">
               <Button
                 variant="outline"
                 size="icon-sm"
                 onClick={handleClearAllPriceBookItems}
                 className="h-8 w-8 text-amber-500 hover:bg-amber-500/10 cursor-pointer shadow-xs"
-                title="Wipe/Clear All Items inside Price Book"
+                title="Wipe/Clear All Items in Master Catalog"
               >
                 <RotateCcwIcon className="size-3.5" />
               </Button>
@@ -804,12 +652,25 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
             </div>
           )}
 
+          {/* Generate / Update BOQ Button */}
+          {viewMode === 'boq' && onGenerateBOQ && (
+            <Button
+              size="sm"
+              onClick={onGenerateBOQ}
+              disabled={analyzing}
+              className="h-8 px-3 text-xs gap-1.5 cursor-pointer bg-primary text-primary-foreground shadow-2xs hover:bg-primary/90 font-semibold rounded-lg"
+            >
+              <SparklesIcon className="size-3.5" />
+              <span>{analyzing ? 'Generating BOQ...' : 'Generate BOQ'}</span>
+            </Button>
+          )}
+
           {/* Add Item Button */}
           <Button
             size="sm"
             onClick={handleOpenAddModal}
             disabled={!hasFile}
-            className="h-8 px-3 text-xs gap-1.5 cursor-pointer bg-primary text-primary-foreground shadow-2xs hover:bg-primary/90 font-medium rounded-lg"
+            className="h-8 px-3 text-xs gap-1.5 cursor-pointer bg-secondary text-secondary-foreground shadow-2xs hover:bg-secondary/80 font-medium rounded-lg"
           >
             <PlusIcon className="size-3.5" />
             <span>Add Item</span>
@@ -872,11 +733,11 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
           </div>
         ) : (
           <UniversViewer
+            key={`viewer-${viewMode}-${activePriceListId}-${refreshKey}`}
             ref={viewerRef}
             onReady={() => setHasFile(true)}
             onNoFile={() => setHasFile(false)}
             onError={(msg) => setViewerError(msg)}
-            onEditItem={handleOpenEditModal}
             onNavigateToPage={onNavigateToPage}
             activePriceListId={activePriceListId}
             hasActiveProject={hasActiveProject}
@@ -888,117 +749,6 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
           />
         )}
       </div>
-
-
-      {/* Add / Edit Item Shadcn Dialog */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-base font-semibold">
-              {editingItem ? 'Edit Pricing Item' : 'Add New Item'}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              {editingItem
-                ? 'Update rate, description, unit, and section classification.'
-                : 'Add a new schedule item to the master workbook.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleFormSubmit} className="flex flex-col gap-3.5 py-1">
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs font-medium text-foreground">SOR Code (Optional)</Label>
-              <Input
-                type="text"
-                value={formCode}
-                onChange={(e) => setFormCode(e.target.value)}
-                placeholder="e.g. 1010-05"
-                className="h-8 text-xs"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs font-medium text-foreground">Item Description *</Label>
-              <Textarea
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                placeholder="e.g. Remote Radio Unit (RRU) Tower Mount"
-                rows={2}
-                className="text-xs min-h-16 resize-none"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-medium text-foreground">Unit</Label>
-                <Select value={formUnit} onValueChange={setFormUnit}>
-                  <SelectTrigger className="w-full h-8 text-xs">
-                    <SelectValue placeholder="Select unit..." />
-                  </SelectTrigger>
-                  <SelectContent className="text-xs">
-                    <SelectGroup>
-                      {Array.from(new Set([...existingUnits, formUnit])).filter(Boolean).map((u) => (
-                        <SelectItem key={u} value={u} className="text-xs">
-                          {u}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-medium text-foreground">Rate ($ Excl. GST) *</Label>
-                <Input
-                  type="text"
-                  value={formRate}
-                  onChange={(e) => setFormRate(e.target.value)}
-                  placeholder="e.g. 450.00"
-                  className="h-8 text-xs"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs font-medium text-foreground">Category / Section</Label>
-              <Select value={formCategory} onValueChange={setFormCategory}>
-                <SelectTrigger className="w-full h-8 text-xs">
-                  <SelectValue placeholder="Select category..." />
-                </SelectTrigger>
-                <SelectContent className="text-xs">
-                  <SelectGroup>
-                    {Array.from(new Set([...existingCategories, formCategory])).filter(Boolean).map((c) => (
-                      <SelectItem key={c} value={c} className="text-xs">
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <DialogFooter className="gap-2 pt-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsModalOpen(false)}
-                className="text-xs cursor-pointer"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                size="sm"
-                className="text-xs cursor-pointer bg-primary text-primary-foreground"
-              >
-                {editingItem ? 'Save Changes' : 'Create Item'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       {/* Prompt Dialog */}
       <Dialog open={Boolean(promptState?.isOpen)} onOpenChange={(open) => { if (!open) setPromptState(null); }}>

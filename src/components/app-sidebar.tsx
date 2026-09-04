@@ -5,21 +5,16 @@ import {
   Boxes,
   Building2,
   Cpu,
-  FileCode,
-  FileSpreadsheet,
   FileText,
-  FolderDot,
   Layers,
   LayoutDashboard,
   Moon,
   Settings2,
-  Sliders,
   Sun,
   Tag,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-projects"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
@@ -83,28 +78,6 @@ const data = {
       title: "Master Prices",
       icon: <Tag className="size-4" />,
     },
-    {
-      id: "rules",
-      title: "Rules",
-      icon: <Sliders className="size-4" />,
-    },
-  ],
-  projects: [
-    {
-      name: "Bella Vista Telecom",
-      url: "#",
-      icon: <FolderDot className="size-4" />,
-    },
-    {
-      name: "Drawing Takeoff Spec",
-      url: "#",
-      icon: <FileCode className="size-4" />,
-    },
-    {
-      name: "Priced BOQ Export",
-      url: "#",
-      icon: <FileSpreadsheet className="size-4" />,
-    },
   ],
 }
 
@@ -150,7 +123,6 @@ export function AppSidebar({
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={data.navMain} activeTab={activeTab} onTabChange={onTabChange} />
-        <NavProjects projects={data.projects} />
         <NavSecondary items={secondaryNavItems} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>

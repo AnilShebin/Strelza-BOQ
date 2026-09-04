@@ -23,7 +23,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'boq', name: 'BOQ Viewer', icon: 'file-text' },
     { id: 'equipment', name: 'Equipment', icon: 'cpu' },
     { id: 'pricelist', name: 'Master Prices', icon: 'price-list' },
-    { id: 'rules', name: 'Rules', icon: 'tag' },
   ];
 
   return (

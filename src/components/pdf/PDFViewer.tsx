@@ -214,7 +214,9 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       if (!isResizing || !viewerRef.current) return;
       const viewerRect = viewerRef.current.getBoundingClientRect();
       const newWidth = viewerRect.right - e.clientX;
-      setPanelWidth(Math.max(280, Math.min(viewerRect.width * 0.75, newWidth)));
+      // Ensure the PDF canvas retains at least 560px so toolbar tools are never hidden
+      const maxPanelWidth = Math.max(320, Math.min(viewerRect.width * 0.58, viewerRect.width - 560));
+      setPanelWidth(Math.max(300, Math.min(maxPanelWidth, newWidth)));
     },
     [isResizing]
   );
@@ -295,7 +297,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   return (
     <div
       ref={viewerRef}
-      className="flex-1 flex flex-col bg-muted/15 relative overflow-hidden min-h-0 min-w-0 select-none"
+      className="flex-1 flex flex-row bg-muted/15 relative overflow-hidden min-h-0 min-w-0 select-none"
     >
       <style>{`
         .adobe-grab, .adobe-grab * { cursor: grab !important; }
@@ -303,52 +305,52 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         .dark .pdf-render-canvas { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(1.1); }
       `}</style>
 
-      <PDFToolbar
-        pdfBase64={pdfBase64}
-        currentPage={currentPage}
-        totalPages={totalPages}
-        setCurrentPage={setCurrentPage}
-        interactionMode={interactionMode}
-        setInteractionMode={setInteractionMode}
-        zoomIn={zoomIn}
-        zoomOut={zoomOut}
-        scale={scale}
-        rotation={rotation}
-        setRotation={setRotation}
-        zoomMode={zoomMode}
-        zoomScale={zoomScale}
-        handleZoomSelect={(m) =>
-          typeof m === 'number'
-            ? (setZoomMode('custom'), setZoomScale(m))
-            : setZoomMode(m)
-        }
-        toggleFullscreen={toggleFullscreen}
-        isFullscreen={isFullscreen}
-        showExtractionPanel={showExtractionPanel}
-        setShowExtractionPanel={setShowExtractionPanel}
-        onClearPageMarkups={onClearPageMarkups}
-        pageMarkupCount={pageMarkupCount}
-        onUndoMarkup={onUndoMarkup}
-        onRedoMarkup={onRedoMarkup}
-        canUndoMarkup={canUndoMarkup}
-        canRedoMarkup={canRedoMarkup}
-      />
+      {isResizing && <div className="fixed inset-0 cursor-col-resize z-[9999] select-none" />}
 
-      <div className="flex-1 flex flex-row min-h-0 min-w-0 overflow-hidden relative">
-        {isResizing && <div className="fixed inset-0 cursor-col-resize z-[9999] select-none" />}
+      {/* Left Column: PDF Workspace & Canvas (Toolbar only spans this column) */}
+      <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden relative">
+        <PDFToolbar
+          pdfBase64={pdfBase64}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          setCurrentPage={setCurrentPage}
+          interactionMode={interactionMode}
+          setInteractionMode={setInteractionMode}
+          zoomIn={zoomIn}
+          zoomOut={zoomOut}
+          scale={scale}
+          rotation={rotation}
+          setRotation={setRotation}
+          zoomMode={zoomMode}
+          zoomScale={zoomScale}
+          handleZoomSelect={(m) =>
+            typeof m === 'number'
+              ? (setZoomMode('custom'), setZoomScale(m))
+              : setZoomMode(m)
+          }
+          toggleFullscreen={toggleFullscreen}
+          isFullscreen={isFullscreen}
+          showExtractionPanel={showExtractionPanel}
+          setShowExtractionPanel={setShowExtractionPanel}
+          onClearPageMarkups={onClearPageMarkups}
+          pageMarkupCount={pageMarkupCount}
+          onUndoMarkup={onUndoMarkup}
+          onRedoMarkup={onRedoMarkup}
+          canUndoMarkup={canUndoMarkup}
+          canRedoMarkup={canRedoMarkup}
+        />
 
-        <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
-          <div
-            ref={containerRef}
-            className={`flex-1 overflow-auto py-6 px-6 flex flex-col items-start justify-start gap-6 min-h-0 bg-neutral-900/5 dark:bg-neutral-950/40 transition-colors duration-150 ${
-              interactionMode === 'pan'
-                ? isPanning
-                  ? 'adobe-grabbing select-none'
-                  : 'adobe-grab select-none'
-                : 'cursor-default'
-            }`}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
+        <div
+          ref={containerRef}
+          className={`flex-1 overflow-auto py-6 px-6 flex flex-col items-start justify-start gap-6 min-h-0 bg-neutral-900/5 dark:bg-neutral-950/40 transition-colors duration-150 ${
+            interactionMode === 'pan'
+              ? isPanning
+                ? 'adobe-grabbing select-none'
+                : 'adobe-grab select-none'
+              : 'cursor-default'
+          }`}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
           >
@@ -422,7 +424,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
             setSelectedPages={setSelectedPages}
           />
         )}
-      </div>
     </div>
   );
 };

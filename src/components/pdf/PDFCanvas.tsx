@@ -206,6 +206,15 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
         canvas.style.width = `${tvp.width}px`;
         canvas.style.height = `${tvp.height}px`;
 
+        if (renderTaskRef.current) {
+          try {
+            renderTaskRef.current.cancel();
+          } catch (e) {
+            // ignore
+          }
+          renderTaskRef.current = null;
+        }
+
         const rt = page.render({ canvasContext: ctx, viewport: vp });
         renderTaskRef.current = rt;
 
@@ -215,6 +224,7 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
             const pdfjsLib = (window as any).pdfjsLib;
             if (textLayerDiv && pdfjsLib) {
               textLayerDiv.innerHTML = '';
+              textLayerDiv.style.setProperty('--scale-factor', String(cs));
               page
                 .getTextContent()
                 .then((tc: any) => {
@@ -410,53 +420,63 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
           }}
         />
 
-        {!highlightAll && highlightedBbox && originalPageSize && (
-          <div
-            className="absolute border-2 border-amber-500 dark:border-amber-400 bg-amber-500/25 dark:bg-amber-400/30 ring-2 ring-amber-400/60 shadow-[0_0_20px_rgba(245,158,11,0.7)] rounded z-30 pointer-events-none transition-all duration-150 animate-pulse"
-            style={{
-              left: `${(highlightedBbox[0] / originalPageSize.width) * dimensions.width}px`,
-              top: `${(highlightedBbox[1] / originalPageSize.height) * dimensions.height}px`,
-              width: `${((highlightedBbox[2] - highlightedBbox[0]) / originalPageSize.width) * dimensions.width}px`,
-              height: `${((highlightedBbox[3] - highlightedBbox[1]) / originalPageSize.height) * dimensions.height}px`,
-            }}
-          >
-            <div className="absolute -top-5 left-0 bg-amber-500 dark:bg-amber-400 text-neutral-950 font-bold font-mono text-[9px] px-1.5 py-0.5 rounded-t shadow-md whitespace-nowrap">
-              TARGET SCHEDULE
-            </div>
-          </div>
-        )}
+        {(() => {
+          const pageSize = originalPageSize || {
+            width: dimensions.width > 0 ? (dimensions.width / (scale || 1)) : 1000,
+            height: dimensions.height > 0 ? (dimensions.height / (scale || 1)) : 1400,
+          };
 
-        {highlightAll &&
-          originalPageSize &&
-          pageElements &&
-          pageElements.map((el, idx) => {
-            if (!el.bbox) return null;
-            const isSingleSelected =
-              highlightedBbox &&
-              highlightedBbox[0] === el.bbox[0] &&
-              highlightedBbox[1] === el.bbox[1];
-
-            return (
-              <div
-                key={idx}
-                className={`absolute border-2 transition-all duration-150 rounded-xs pointer-events-none z-30 ${
-                  isSingleSelected
-                    ? 'border-amber-400 bg-amber-400/35 ring-2 ring-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.8)]'
-                    : 'border-cyan-500 dark:border-cyan-400 bg-cyan-500/20 dark:bg-cyan-400/25 shadow-[0_0_12px_rgba(6,182,212,0.5)]'
-                }`}
-                style={{
-                  left: `${(el.bbox[0] / originalPageSize.width) * dimensions.width}px`,
-                  top: `${(el.bbox[1] / originalPageSize.height) * dimensions.height}px`,
-                  width: `${((el.bbox[2] - el.bbox[0]) / originalPageSize.width) * dimensions.width}px`,
-                  height: `${((el.bbox[3] - el.bbox[1]) / originalPageSize.height) * dimensions.height}px`,
-                }}
-              >
-                <div className="absolute -top-4.5 left-0 bg-cyan-600 dark:bg-cyan-500 text-white font-mono font-semibold text-[8.5px] px-1.5 py-0 rounded-t shadow-xs truncate max-w-[160px]">
-                  {el.title || `Schedule #${idx + 1}`}
+          return (
+            <>
+              {!highlightAll && highlightedBbox && (
+                <div
+                  className="absolute border-2 border-amber-500 dark:border-amber-400 bg-amber-500/25 dark:bg-amber-400/30 ring-2 ring-amber-400/60 shadow-[0_0_20px_rgba(245,158,11,0.7)] rounded z-30 pointer-events-none transition-all duration-150 animate-pulse"
+                  style={{
+                    left: `${(highlightedBbox[0] / pageSize.width) * dimensions.width}px`,
+                    top: `${(highlightedBbox[1] / pageSize.height) * dimensions.height}px`,
+                    width: `${((highlightedBbox[2] - highlightedBbox[0]) / pageSize.width) * dimensions.width}px`,
+                    height: `${((highlightedBbox[3] - highlightedBbox[1]) / pageSize.height) * dimensions.height}px`,
+                  }}
+                >
+                  <div className="absolute -top-5 left-0 bg-amber-500 dark:bg-amber-400 text-neutral-950 font-bold font-mono text-[9px] px-1.5 py-0.5 rounded-t shadow-md whitespace-nowrap">
+                    TARGET SCHEDULE
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              )}
+
+              {highlightAll &&
+                pageElements &&
+                pageElements.map((el, idx) => {
+                  if (!el.bbox) return null;
+                  const isSingleSelected =
+                    highlightedBbox &&
+                    highlightedBbox[0] === el.bbox[0] &&
+                    highlightedBbox[1] === el.bbox[1];
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`absolute border-2 transition-all duration-150 rounded-xs pointer-events-none z-30 ${
+                        isSingleSelected
+                          ? 'border-amber-400 bg-amber-400/35 ring-2 ring-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.8)]'
+                          : 'border-cyan-500 dark:border-cyan-400 bg-cyan-500/20 dark:bg-cyan-400/25 shadow-[0_0_12px_rgba(6,182,212,0.5)]'
+                      }`}
+                      style={{
+                        left: `${(el.bbox[0] / pageSize.width) * dimensions.width}px`,
+                        top: `${(el.bbox[1] / pageSize.height) * dimensions.height}px`,
+                        width: `${((el.bbox[2] - el.bbox[0]) / pageSize.width) * dimensions.width}px`,
+                        height: `${((el.bbox[3] - el.bbox[1]) / pageSize.height) * dimensions.height}px`,
+                      }}
+                    >
+                      <div className="absolute -top-4.5 left-0 bg-cyan-600 dark:bg-cyan-500 text-white font-mono font-semibold text-[8.5px] px-1.5 py-0 rounded-t shadow-xs truncate max-w-[160px]">
+                        {el.title || el.name || `Schedule #${idx + 1}`}
+                      </div>
+                    </div>
+                  );
+                })}
+            </>
+          );
+        })()}
 
         {interactionMode === 'pen' && selectedMarkup && selectedBounds && (
           <div

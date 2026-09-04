@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/app-sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { PDFViewer } from '@/components/pdf/PDFViewer';
 import { OverviewDashboard } from '@/components/dashboard/OverviewDashboard';
 import { BOQDashboard } from '@/components/dashboard/BOQDashboard';
-import { MappingRulesViewer } from '@/components/rules/MappingRulesViewer';
 import { EquipmentCatalogViewer } from '@/components/equipment/EquipmentCatalogViewer';
 import { SettingsView } from '@/components/layout/SettingsView';
 import { toast } from 'sonner';
 import { saveWorkspaceToStorage, loadWorkspaceFromStorage } from '@/services/storage';
+import { clearUniversViewerCache } from '@/components/dashboard/UniversViewer';
 
 export interface PDFDoc {
   name: string;
@@ -38,8 +38,49 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
   const [extractingPage, setExtractingPage] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  // UI markup state
+  // UI markup state & Undo/Redo history stacks
   const [markups, setMarkups] = useState<any[]>([]);
+  const [undoStack, setUndoStack] = useState<any[][]>([]);
+  const [redoStack, setRedoStack] = useState<any[][]>([]);
+
+  const handleAddMarkup = useCallback((m: any) => {
+    setUndoStack((prev) => [...prev, markups]);
+    setRedoStack([]);
+    setMarkups((prev) => [...prev, m]);
+  }, [markups]);
+
+  const handleDeleteMarkup = useCallback((id: string) => {
+    setUndoStack((prev) => [...prev, markups]);
+    setRedoStack([]);
+    setMarkups((prev) => prev.filter((m) => m.id !== id));
+  }, [markups]);
+
+  const handleClearPageMarkups = useCallback((page: number) => {
+    setUndoStack((prev) => [...prev, markups]);
+    setRedoStack([]);
+    setMarkups((prev) => prev.filter((m) => m.page !== page));
+  }, [markups]);
+
+  const handleUndoMarkup = useCallback(() => {
+    setUndoStack((prevUndo) => {
+      if (prevUndo.length === 0) return prevUndo;
+      const previous = prevUndo[prevUndo.length - 1];
+      setRedoStack((prevRedo) => [...prevRedo, markups]);
+      setMarkups(previous);
+      return prevUndo.slice(0, -1);
+    });
+  }, [markups]);
+
+  const handleRedoMarkup = useCallback(() => {
+    setRedoStack((prevRedo) => {
+      if (prevRedo.length === 0) return prevRedo;
+      const next = prevRedo[prevRedo.length - 1];
+      setUndoStack((prevUndo) => [...prevUndo, markups]);
+      setMarkups(next);
+      return prevRedo.slice(0, -1);
+    });
+  }, [markups]);
+
   const [highlightedBbox, setHighlightedBbox] = useState<[number, number, number, number] | null>(null);
   const [geminiRateLimit, setGeminiRateLimit] = useState<number>(15);
 
@@ -95,6 +136,36 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
   const handleToggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
+
+  // Global Keyboard Shortcuts for Markup Undo / Redo on Drawing Canvas
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (activeTab !== 'documents') return;
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          (activeEl as HTMLElement).isContentEditable);
+      if (isInput) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          handleRedoMarkup();
+        } else {
+          e.preventDefault();
+          handleUndoMarkup();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedoMarkup();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, handleUndoMarkup, handleRedoMarkup]);
 
   const handleSelectPDF = (index: number) => {
     setActivePdfIndex(index);
@@ -222,6 +293,54 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
       console.error('Reextract page error:', err);
     } finally {
       setExtractingPage(false);
+    }
+  };
+
+  const [generatingBOQ, setGeneratingBOQ] = useState(false);
+  const [boqRefreshKey, setBoqRefreshKey] = useState<number>(0);
+
+  const handleGenerateBOQ = async () => {
+    if (!activePdf) {
+      toast.error('No active drawing found. Please open a PDF drawing first.');
+      return;
+    }
+
+    setGeneratingBOQ(true);
+    const toastId = toast.loading('Generating commercial Bill of Quantities...');
+
+    try {
+      // Invalidate UniversViewer in-memory cache so fresh data will fetch
+      clearUniversViewerCache();
+
+      const res = await fetch('http://localhost:8000/api/generate-boq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: activePdf.path,
+          name: activePdf.name,
+          extracted_data: analyzedData,
+          price_list_id: 1,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.detail || `Server error: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      const count = data.consolidated_count || (data.mapped_items || []).length || 0;
+      toast.success(`BOQ Generated Successfully! ${count} items mapped and priced.`, { id: toastId });
+
+      // Trigger re-fetch and mount fresh items
+      setBoqRefreshKey((prev) => prev + 1);
+      setActiveTab('boq');
+    } catch (err: any) {
+      console.error('Error generating BOQ:', err);
+      toast.error(`Failed to generate BOQ: ${err.message || 'Unknown error'}`, { id: toastId });
+      setActiveTab('boq');
+    } finally {
+      setGeneratingBOQ(false);
     }
   };
 
@@ -385,10 +504,10 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
               onDocumentLoad={(pages: number) => updateActivePdfField('totalPages', pages)}
               onLoadPDF={handleLoadPDF}
               analyzedData={analyzedData}
-              analyzing={extracting}
+              analyzing={generatingBOQ || extracting}
               analysisError={analysisError}
               isMaximized={false}
-              onGenerateBOQ={() => setActiveTab('boq')}
+              onGenerateBOQ={handleGenerateBOQ}
               onViewDashboard={() => setActiveTab('dashboard')}
               extractedData={analyzedData}
               extracting={extracting}
@@ -398,13 +517,13 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
               highlightedBbox={highlightedBbox}
               onHighlightBbox={setHighlightedBbox}
               markups={markups}
-              onAddMarkup={(m: any) => setMarkups((prev) => [...prev, m])}
-              onDeleteMarkup={(id: string) => setMarkups((prev) => prev.filter((m) => m.id !== id))}
-              onClearPageMarkups={(page: number) => setMarkups((prev) => prev.filter((m) => m.page !== page))}
-              onUndoMarkup={() => { }}
-              onRedoMarkup={() => { }}
-              canUndoMarkup={false}
-              canRedoMarkup={false}
+              onAddMarkup={handleAddMarkup}
+              onDeleteMarkup={handleDeleteMarkup}
+              onClearPageMarkups={handleClearPageMarkups}
+              onUndoMarkup={handleUndoMarkup}
+              onRedoMarkup={handleRedoMarkup}
+              canUndoMarkup={undoStack.length > 0}
+              canRedoMarkup={redoStack.length > 0}
             />
           ) : activeTab === 'settings' ? (
             <SettingsView
@@ -417,17 +536,15 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
               cacheClearStatus={null}
               onCancel={() => setActiveTab('dashboard')}
             />
-          ) : activeTab === 'rules' ? (
-            <MappingRulesViewer />
           ) : activeTab === 'equipment' ? (
             <EquipmentCatalogViewer />
           ) : activeTab === 'dashboard' ? (
             <OverviewDashboard
               pdfName={activePdf?.name}
               analyzedData={analyzedData}
-              analyzing={extracting}
+              analyzing={generatingBOQ || extracting}
               onLoadPDF={handleLoadPDF}
-              onGenerateBOQ={() => setActiveTab('boq')}
+              onGenerateBOQ={handleGenerateBOQ}
               onTabChange={setActiveTab}
               extractedData={analyzedData}
               extracting={extracting}
@@ -435,11 +552,13 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
             />
           ) : activeTab === 'boq' || activeTab === 'pricelist' ? (
             <BOQDashboard
+              key={boqRefreshKey}
               viewMode={activeTab === 'pricelist' ? 'pricelist' : 'boq'}
               pdfName={activePdf?.name}
               analyzedData={analyzedData}
-              analyzing={extracting}
+              analyzing={generatingBOQ || extracting}
               onLoadPDF={handleLoadPDF}
+              onGenerateBOQ={handleGenerateBOQ}
               onNavigateToPage={(page) => {
                 setActiveTab('documents');
                 updateActivePdfField('currentPage', page);
@@ -449,9 +568,9 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
             <OverviewDashboard
               pdfName={activePdf?.name}
               analyzedData={analyzedData}
-              analyzing={extracting}
+              analyzing={generatingBOQ || extracting}
               onLoadPDF={handleLoadPDF}
-              onGenerateBOQ={() => setActiveTab('boq')}
+              onGenerateBOQ={handleGenerateBOQ}
               onTabChange={setActiveTab}
               extractedData={analyzedData}
               extracting={extracting}

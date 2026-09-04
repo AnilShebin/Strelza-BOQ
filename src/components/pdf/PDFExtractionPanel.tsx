@@ -19,7 +19,18 @@ import {
   CheckCircle2Icon,
   CpuIcon,
   InfoIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronDownIcon,
 } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export type StructuredContent =
   | {
@@ -120,54 +131,52 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
         <div className="absolute top-1/2 -translate-y-1/2 left-0 w-1.5 h-8 bg-muted-foreground/30 group-hover:bg-primary rounded-r transition-colors" />
       </div>
 
-      {/* Header */}
-      <div className="h-12 px-3.5 border-b border-border/70 flex justify-between items-center shrink-0 bg-muted/30 backdrop-blur-xs">
-        <div className="flex items-center gap-2.5">
-          <div className="size-7 rounded-lg bg-primary/10 ring-1 ring-primary/20 flex items-center justify-center text-primary shadow-2xs">
-            <ScanLineIcon className="size-4" />
+      {/* Extraction Studio Top Header - Extends all the way to the top */}
+      <div className="h-11 px-3.5 border-b border-border/70 flex justify-between items-center shrink-0 bg-card/95 backdrop-blur-xs select-none">
+        <div className="flex items-center gap-2">
+          <div className="size-6 rounded-md bg-primary/10 ring-1 ring-primary/20 flex items-center justify-center text-primary shadow-2xs">
+            <ScanLineIcon className="size-3.5" />
           </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <h3 className="text-xs font-semibold tracking-tight text-foreground">
-                Extraction Studio
-              </h3>
-              <Badge variant="secondary" className="text-[9px] font-medium h-4 px-1.5 py-0 bg-primary/10 text-primary border-0">
-                AI Vision
-              </Badge>
-            </div>
-            <span className="text-[10px] text-muted-foreground">
-              {analyzedData ? 'Table & Schedule Results' : 'Drawing Sheet Scanner'}
-            </span>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-xs font-semibold tracking-tight text-foreground">
+              Extraction Studio
+            </h3>
+            <Badge variant="secondary" className="text-[9px] font-medium h-4 px-1.5 py-0 bg-primary/10 text-primary border-0">
+              AI Vision
+            </Badge>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           {/* Highlight Toggle Switch */}
-          <button
-            type="button"
-            onClick={() => onToggleHighlightAll?.()}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10.5px] font-medium transition-all cursor-pointer border ${
-              highlightAll
-                ? 'bg-amber-500/20 text-amber-500 dark:text-amber-400 border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.25)] ring-1 ring-amber-400/30'
-                : 'bg-muted/60 text-muted-foreground border-border/60 hover:bg-muted hover:text-foreground'
-            }`}
-            title="Highlight all detected bounding boxes on the drawing canvas"
-          >
-            <HighlighterIcon className={`size-3 ${highlightAll ? 'text-amber-500 dark:text-amber-400' : ''}`} />
-            <span>Highlight</span>
-            <span
-              className={`size-1.5 rounded-full ${
-                highlightAll ? 'bg-amber-500 dark:bg-amber-400 animate-ping' : 'bg-muted-foreground/40'
+          {onToggleHighlightAll && (
+            <button
+              type="button"
+              onClick={onToggleHighlightAll}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10.5px] font-medium transition-all cursor-pointer border ${
+                highlightAll
+                  ? 'bg-amber-500/20 text-amber-500 dark:text-amber-400 border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.25)] ring-1 ring-amber-400/30'
+                  : 'bg-muted/60 text-muted-foreground border-border/60 hover:bg-muted hover:text-foreground'
               }`}
-            />
-          </button>
+              title="Highlight all detected bounding boxes on the drawing canvas"
+            >
+              <HighlighterIcon className={`size-3 ${highlightAll ? 'text-amber-500 dark:text-amber-400' : ''}`} />
+              <span>Highlight</span>
+              <span
+                className={`size-1.5 rounded-full ${
+                  highlightAll ? 'bg-amber-500 dark:bg-amber-400 animate-ping' : 'bg-muted-foreground/40'
+                }`}
+              />
+            </button>
+          )}
 
+          {/* Close Panel Button */}
           <Button
             variant="ghost"
             size="icon-xs"
             onClick={() => setShowExtractionPanel(false)}
-            className="size-7 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-md"
-            title="Close Panel"
+            className="size-7 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-md cursor-pointer"
+            title="Close Extraction Panel"
           >
             <XIcon className="size-3.5" />
           </Button>
@@ -175,7 +184,7 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
       </div>
 
       {/* Body Content */}
-      <div className="flex-1 overflow-y-auto p-3.5 flex flex-col gap-3 min-h-0 select-none">
+      <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2.5 min-h-0 select-none">
         {analyzing ? (
           /* Analyzing Loading State */
           <div className="flex-1 flex flex-col justify-center items-center p-4 gap-4 my-auto">
@@ -241,15 +250,89 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
 
             return (
               <div className="flex flex-col gap-3">
-                {/* Current Page Banner */}
-                <div className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-muted/40 border border-border/70">
-                  <div className="flex items-center gap-2">
-                    <LayersIcon className="size-3.5 text-primary" />
-                    <span className="text-xs font-medium text-foreground">
-                      Sheet {currentPage} of {totalSheets}
-                    </span>
+                {/* Modern Interactive Sheet Selector Bar */}
+                <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-muted/40 border border-border/80 shadow-2xs gap-2 shrink-0">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={currentPage <= 1}
+                      onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                      className="size-7 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer shrink-0 disabled:opacity-30"
+                      title="Previous Sheet"
+                    >
+                      <ChevronLeftIcon className="size-3.5" />
+                    </Button>
+
+                    {/* Sheet Dropdown Picker */}
+                    <Select
+                      value={String(currentPage)}
+                      onValueChange={(val) => setCurrentPage(Number(val))}
+                    >
+                      <SelectTrigger className="h-7 text-xs px-2.5 font-medium border-border/70 bg-background/90 hover:bg-background rounded-lg shadow-2xs gap-1.5 w-auto max-w-[210px]">
+                        <LayersIcon className="size-3 text-primary shrink-0" />
+                        {(() => {
+                          const currentTb = analyzedData?.elements?.find(
+                            (el) => el.page === currentPage && (el.title === "Title Block Metadata" || (el.content as any)?.fields?.["Sheet Number"])
+                          );
+                          const code = (currentTb?.content as any)?.fields?.["Sheet Number"];
+                          return (
+                            <span className="font-semibold text-foreground truncate">
+                              {code ? `${code}` : `Sheet ${currentPage}`}
+                            </span>
+                          );
+                        })()}
+                        <span className="text-muted-foreground text-[10.5px] shrink-0">of {totalSheets}</span>
+                      </SelectTrigger>
+                      <SelectContent className="max-h-64 text-xs max-w-sm">
+                        <SelectGroup>
+                          {Array.from({ length: totalSheets }).map((_, idx) => {
+                            const p = idx + 1;
+                            const count =
+                              analyzedData?.elements?.filter((el) => el.page === p).length || 0;
+                            const tb = analyzedData?.elements?.find(
+                              (el) => el.page === p && (el.title === "Title Block Metadata" || (el.content as any)?.fields?.["Sheet Number"])
+                            );
+                            const shtCode = (tb?.content as any)?.fields?.["Sheet Number"];
+                            const shtTitle = (tb?.content as any)?.fields?.["Sheet Title"];
+
+                            return (
+                              <SelectItem key={p} value={String(p)} className="text-xs cursor-pointer">
+                                <div className="flex items-center justify-between w-full gap-3">
+                                  <div className="flex items-center gap-1.5 min-w-0 truncate">
+                                    <span className={p === currentPage ? "font-bold text-primary truncate" : "truncate"}>
+                                      {shtCode ? `${shtCode}${shtTitle ? ` • ${shtTitle}` : ''}` : `Sheet ${p}`}
+                                    </span>
+                                  </div>
+                                  {count > 0 && (
+                                    <span className="text-[10px] font-mono text-muted-foreground px-1.5 py-0.5 rounded bg-muted shrink-0">
+                                      {count}
+                                    </span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={currentPage >= totalSheets}
+                      onClick={() => setCurrentPage(Math.min(totalSheets, currentPage + 1))}
+                      className="size-7 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer shrink-0 disabled:opacity-30"
+                      title="Next Sheet"
+                    >
+                      <ChevronRightIcon className="size-3.5" />
+                    </Button>
                   </div>
-                  <Badge variant="secondary" className="text-[10px] font-mono">
+
+                  <Badge
+                    variant="secondary"
+                    className="text-[10.5px] font-mono px-2 py-0.5 shrink-0 bg-primary/10 text-primary border-primary/20"
+                  >
                     {currentPageElements.length}{' '}
                     {currentPageElements.length === 1 ? 'element' : 'elements'} found
                   </Badge>
@@ -348,9 +431,9 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                               const currentWidths = columnWidths[tableKey] || [];
 
                               return (
-                                <div className="overflow-x-auto border border-border/80 rounded-lg bg-background shadow-inner max-h-[calc(45vh-80px)]">
+                                <div className="overflow-x-auto border border-border/70 rounded-xl bg-background/60 shadow-2xs max-h-[calc(45vh-80px)]">
                                   <table
-                                    className="text-left border-collapse text-[10px] w-full"
+                                    className="text-left border-collapse text-[10.5px] w-full"
                                     style={{
                                       tableLayout: currentWidths.length > 0 ? 'fixed' : 'auto',
                                       width: currentWidths.length > 0 ? 'max-content' : '100%',
@@ -358,7 +441,7 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                                     }}
                                   >
                                     <thead>
-                                      <tr className="bg-muted/80 text-foreground font-semibold select-none border-b border-border/80">
+                                      <tr className="bg-muted/60 text-foreground font-semibold select-none border-b border-border/80">
                                         {headers.map((hdr, hIdx) => {
                                           const colWidth = currentWidths[hIdx];
                                           return (
@@ -366,9 +449,9 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                                               key={hIdx}
                                               style={{
                                                 width: colWidth ? `${colWidth}px` : undefined,
-                                                minWidth: '70px',
+                                                minWidth: '80px',
                                               }}
-                                              className="sticky top-0 bg-muted/95 backdrop-blur-xs z-10 py-1.5 px-2.5 font-medium whitespace-nowrap border-r border-border/70 last:border-r-0 text-muted-foreground"
+                                              className="sticky top-0 bg-muted/95 backdrop-blur-md z-10 py-2 px-3 font-semibold text-[9.5px] tracking-wider uppercase whitespace-nowrap border-r border-border/60 last:border-r-0 text-muted-foreground"
                                             >
                                               <span className="truncate block">{hdr}</span>
                                             </th>
@@ -380,7 +463,7 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                                       {rows.map((row, rIdx) => (
                                         <tr
                                           key={rIdx}
-                                          className="hover:bg-muted/40 transition-colors"
+                                          className="hover:bg-muted/40 even:bg-muted/15 transition-colors"
                                         >
                                           {Array.isArray(row) &&
                                             row.map((cell, cIdx) => {
@@ -390,9 +473,9 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                                                   key={cIdx}
                                                   style={{
                                                     width: colWidth ? `${colWidth}px` : undefined,
-                                                    minWidth: '70px',
+                                                    minWidth: '80px',
                                                   }}
-                                                  className="py-1.5 px-2.5 border-r border-border/40 last:border-r-0 font-normal text-foreground whitespace-pre-wrap break-words text-[10px]"
+                                                  className="py-2 px-3 border-r border-border/30 last:border-r-0 font-normal text-foreground whitespace-pre-wrap break-words text-[11px] leading-relaxed"
                                                 >
                                                   {String(cell ?? '')}
                                                 </td>
@@ -577,30 +660,9 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
         )}
       </div>
 
-      {/* Footer Navigation for Extracted Results */}
+      {/* Footer Actions */}
       {analyzedData && (
-        <div className="p-3 border-t border-border/70 bg-muted/30 backdrop-blur-xs shrink-0 select-none flex flex-col gap-2.5 shadow-xs">
-          {pagesWithElements.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 max-h-20 overflow-y-auto">
-              <span className="text-[10px] font-medium text-muted-foreground mr-1">
-                Sheets:
-              </span>
-              {pagesWithElements.map((pageNum) => (
-                <button
-                  key={pageNum}
-                  onClick={() => setCurrentPage(pageNum)}
-                  className={`px-2 py-0.5 rounded-md text-[10.5px] font-medium cursor-pointer transition-all border ${
-                    currentPage === pageNum
-                      ? 'bg-primary text-primary-foreground font-semibold border-primary shadow-2xs'
-                      : 'bg-card border-border/70 text-muted-foreground hover:bg-muted hover:text-foreground'
-                  }`}
-                >
-                  Sheet {pageNum}
-                </button>
-              ))}
-            </div>
-          )}
-
+        <div className="p-3 border-t border-border/70 bg-muted/30 backdrop-blur-xs shrink-0 select-none flex flex-col gap-2 shadow-xs">
           <div className="flex gap-2">
             {onReextractPage && (
               <Button
@@ -608,10 +670,10 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                 size="sm"
                 onClick={() => onReextractPage(currentPage)}
                 disabled={extractingPage}
-                className="flex-1 h-8 text-xs gap-1.5 cursor-pointer hover:bg-muted font-medium"
+                className="flex-1 h-8.5 text-xs gap-1.5 cursor-pointer hover:bg-muted font-medium rounded-lg"
               >
                 <RefreshCwIcon className={`size-3.5 ${extractingPage ? 'animate-spin' : ''}`} />
-                <span>{extractingPage ? 'Extracting...' : 'Re-scan Sheet'}</span>
+                <span>{extractingPage ? 'Scanning...' : `Re-scan Sheet ${currentPage}`}</span>
               </Button>
             )}
 
@@ -620,7 +682,7 @@ export const PDFExtractionPanel: React.FC<PDFExtractionPanelProps> = ({
                 size="sm"
                 onClick={onGenerateBOQ}
                 disabled={analyzing}
-                className="flex-1 h-8 text-xs bg-primary text-primary-foreground font-semibold cursor-pointer shadow-xs hover:shadow-md gap-1.5"
+                className="flex-1 h-8.5 text-xs bg-primary text-primary-foreground font-semibold cursor-pointer shadow-xs hover:shadow-md gap-1.5 rounded-lg"
               >
                 <SparklesIcon className="size-3.5" />
                 <span>{analyzing ? 'Generating...' : 'Generate BOQ'}</span>

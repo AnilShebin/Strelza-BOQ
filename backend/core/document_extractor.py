@@ -328,10 +328,26 @@ CRITICAL INSTRUCTIONS FOR HIGH-FIDELITY EXTRACTION:
    - "content" must be a plain string containing the exact text of the label or note. Do not summarize or format it.
 7. Provide the normalized bounding box [ymin, xmin, ymax, xmax] between 0 and 1000 relative to the page.
 8. Map elements to the NATIVE PDF TEXT BLOCKS by matching their IDs (e.g. B0, B1) in the "block_ids" array.
+9. ALWAYS extract the Title Block metadata (typically located in the bottom-right corner of the drawing) as a structured element with title "Title Block Metadata" containing key-value fields: "Drawing Number", "Sheet Number", "Sheet Title", "Site ID", "Site Name".
 
 Return ONLY a valid JSON object matching the following structure:
 {
   "elements": [
+    {
+      "type": "structured",
+      "title": "Title Block Metadata",
+      "bbox": [900, 750, 995, 995],
+      "content": {
+        "fields": {
+          "Drawing Number": "N109732",
+          "Sheet Number": "S1-1",
+          "Sheet Title": "ANTENNA CONFIGURATION TABLE",
+          "Site ID": "288399",
+          "Site Name": "BELLA VISTA"
+        }
+      },
+      "confidence": 0.99
+    },
     {
       "type": "structured",
       "title": "Equipment Notes Table",

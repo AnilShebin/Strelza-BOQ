@@ -30,6 +30,9 @@ import {
   MinimizeIcon,
   MoveHorizontalIcon,
   ScanIcon,
+  ScanLineIcon,
+  HighlighterIcon,
+  XIcon,
 } from 'lucide-react';
 
 interface PDFToolbarProps {
@@ -59,6 +62,10 @@ interface PDFToolbarProps {
   onRedoMarkup?: () => void;
   canUndoMarkup?: boolean;
   canRedoMarkup?: boolean;
+  highlightAll?: boolean;
+  onToggleHighlightAll?: () => void;
+  panelWidth?: number;
+  hasAnalyzedData?: boolean;
 }
 
 export const PDFToolbar: React.FC<PDFToolbarProps> = ({
@@ -88,6 +95,10 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
   onRedoMarkup,
   canUndoMarkup = false,
   canRedoMarkup = false,
+  highlightAll = false,
+  onToggleHighlightAll,
+  panelWidth = 520,
+  hasAnalyzedData = false,
 }) => {
   const [pageInput, setPageInput] = useState<string>(currentPage.toString());
 
@@ -110,17 +121,17 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
   );
 
   return (
-    <div className="h-11 px-3 border-b border-border/80 bg-card/95 backdrop-blur-xs flex items-center justify-between shrink-0 select-none z-20 gap-3">
-      {/* Left Section: Page Navigation */}
-      <div className="flex items-center gap-1.5 shrink-0">
+    <div className="h-11 border-b border-border/80 bg-card/95 backdrop-blur-xs flex items-center justify-between shrink-0 select-none z-20 overflow-hidden px-2.5 gap-1.5">
+      {/* Left Section: All PDF & Drawing Canvas Tools */}
+      <div className="flex items-center gap-1.5 overflow-x-auto min-w-0 flex-1 scrollbar-none">
         {/* Page Navigation */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           <Button
             variant="ghost"
             size="icon-xs"
             disabled={!pdfBase64 || currentPage <= 1}
             onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-            className="size-7 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30"
+            className="size-7 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer"
             title="Previous Page (Left Arrow)"
           >
             <ChevronLeftIcon className="size-3.5" />
@@ -145,18 +156,17 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
             size="icon-xs"
             disabled={!pdfBase64 || currentPage >= totalPages}
             onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-            className="size-7 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30"
+            className="size-7 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer"
             title="Next Page (Right Arrow)"
           >
             <ChevronRightIcon className="size-3.5" />
           </Button>
         </div>
-      </div>
 
-      {/* Right / End Section: Tool Modes, Fit Controls, Zoom, Rotation, Fullscreen & Extraction */}
-      <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+        <div className="h-4 w-px bg-border/60 mx-0.5 shrink-0" />
+
         {/* Interaction Mode Group */}
-        <div className="flex items-center p-0.5 rounded-lg bg-muted/60 border border-border/60">
+        <div className="flex items-center p-0.5 rounded-lg bg-muted/60 border border-border/60 shrink-0">
           <Button
             variant="ghost"
             size="icon-xs"
@@ -201,15 +211,15 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
         </div>
 
         {/* Pen Undo/Redo/Clear Actions */}
-        {interactionMode === 'pen' && (
-          <div className="flex items-center gap-0.5 pl-1 border-l border-border/60">
+        {(interactionMode === 'pen' || canUndoMarkup || canRedoMarkup) && (
+          <div className="flex items-center gap-0.5 pl-1 border-l border-border/60 shrink-0">
             {onUndoMarkup && (
               <Button
                 variant="ghost"
                 size="icon-xs"
                 disabled={!canUndoMarkup}
                 onClick={onUndoMarkup}
-                className="size-6.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                className="size-6.5 text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer"
                 title="Undo Stroke (Ctrl+Z)"
               >
                 <Undo2Icon className="size-3" />
@@ -222,7 +232,7 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
                 size="icon-xs"
                 disabled={!canRedoMarkup}
                 onClick={onRedoMarkup}
-                className="size-6.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                className="size-6.5 text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer"
                 title="Redo Stroke (Ctrl+Y)"
               >
                 <Redo2Icon className="size-3" />
@@ -234,7 +244,7 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
                 variant="ghost"
                 size="icon-xs"
                 onClick={() => onClearPageMarkups(currentPage)}
-                className="size-6.5 text-destructive hover:bg-destructive/10"
+                className="size-6.5 text-destructive hover:bg-destructive/10 cursor-pointer"
                 title="Clear Page Markups"
               >
                 <Trash2Icon className="size-3" />
@@ -243,49 +253,51 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
           </div>
         )}
 
-        <div className="h-4 w-px bg-border/60 mx-0.5" />
+        <div className="h-4 w-px bg-border/60 mx-0.5 shrink-0" />
 
         {/* Dedicated Fit Width & Fit Page Buttons */}
-        <Button
-          variant={zoomMode === 'fit-width' ? 'secondary' : 'ghost'}
-          size="icon-xs"
-          disabled={!pdfBase64}
-          onClick={() => handleZoomSelect('fit-width')}
-          className={`size-7 rounded-md cursor-pointer ${
-            zoomMode === 'fit-width'
-              ? 'bg-primary/10 text-primary font-semibold'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-          title="Fit Width"
-        >
-          <MoveHorizontalIcon className="size-3.5" />
-        </Button>
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant={zoomMode === 'fit-width' ? 'secondary' : 'ghost'}
+            size="icon-xs"
+            disabled={!pdfBase64}
+            onClick={() => handleZoomSelect('fit-width')}
+            className={`size-7 rounded-md cursor-pointer ${
+              zoomMode === 'fit-width'
+                ? 'bg-primary/10 text-primary font-semibold'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title="Fit Width"
+          >
+            <MoveHorizontalIcon className="size-3.5" />
+          </Button>
 
-        <Button
-          variant={zoomMode === 'fit-page' ? 'secondary' : 'ghost'}
-          size="icon-xs"
-          disabled={!pdfBase64}
-          onClick={() => handleZoomSelect('fit-page')}
-          className={`size-7 rounded-md cursor-pointer ${
-            zoomMode === 'fit-page'
-              ? 'bg-primary/10 text-primary font-semibold'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-          title="Fit Page"
-        >
-          <ScanIcon className="size-3.5" />
-        </Button>
+          <Button
+            variant={zoomMode === 'fit-page' ? 'secondary' : 'ghost'}
+            size="icon-xs"
+            disabled={!pdfBase64}
+            onClick={() => handleZoomSelect('fit-page')}
+            className={`size-7 rounded-md cursor-pointer ${
+              zoomMode === 'fit-page'
+                ? 'bg-primary/10 text-primary font-semibold'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title="Fit Page"
+          >
+            <ScanIcon className="size-3.5" />
+          </Button>
+        </div>
 
-        <div className="h-4 w-px bg-border/60 mx-0.5" />
+        <div className="h-4 w-px bg-border/60 mx-0.5 shrink-0" />
 
         {/* Zoom Controls */}
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 shrink-0">
           <Button
             variant="ghost"
             size="icon-xs"
             disabled={!pdfBase64}
             onClick={zoomOut}
-            className="size-7 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30"
+            className="size-7 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer"
             title="Zoom Out (Ctrl -)"
           >
             <ZoomOutIcon className="size-3.5" />
@@ -298,39 +310,39 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
                 variant="outline"
                 size="xs"
                 disabled={!pdfBase64}
-                className="h-6.5 px-2 text-[11px] font-mono font-medium gap-1 bg-background hover:bg-muted border-border/70"
+                className="h-6.5 px-2 text-[11px] font-mono font-medium gap-1 bg-background hover:bg-muted border-border/70 cursor-pointer"
               >
                 <span>{currentZoomPercent}%</span>
                 <ChevronDownIcon className="size-2.5 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-36 text-xs">
+            <DropdownMenuContent align="start" className="w-36 text-xs">
               <DropdownMenuLabel className="text-[10px] text-muted-foreground font-semibold uppercase">
                 Zoom Presets
               </DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => handleZoomSelect('fit-width')}>
+              <DropdownMenuItem onClick={() => handleZoomSelect('fit-width')} className="cursor-pointer">
                 Fit Width
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleZoomSelect('fit-page')}>
+              <DropdownMenuItem onClick={() => handleZoomSelect('fit-page')} className="cursor-pointer">
                 Fit Page
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => handleZoomSelect(0.5)}>
+              <DropdownMenuItem onClick={() => handleZoomSelect(0.5)} className="cursor-pointer">
                 50%
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleZoomSelect(0.75)}>
+              <DropdownMenuItem onClick={() => handleZoomSelect(0.75)} className="cursor-pointer">
                 75%
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleZoomSelect(1.0)}>
+              <DropdownMenuItem onClick={() => handleZoomSelect(1.0)} className="cursor-pointer">
                 100% (Actual)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleZoomSelect(1.25)}>
+              <DropdownMenuItem onClick={() => handleZoomSelect(1.25)} className="cursor-pointer">
                 125%
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleZoomSelect(1.5)}>
+              <DropdownMenuItem onClick={() => handleZoomSelect(1.5)} className="cursor-pointer">
                 150%
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleZoomSelect(2.0)}>
+              <DropdownMenuItem onClick={() => handleZoomSelect(2.0)} className="cursor-pointer">
                 200%
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -341,14 +353,14 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
             size="icon-xs"
             disabled={!pdfBase64}
             onClick={zoomIn}
-            className="size-7 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30"
+            className="size-7 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer"
             title="Zoom In (Ctrl +)"
           >
             <ZoomInIcon className="size-3.5" />
           </Button>
         </div>
 
-        <div className="h-4 w-px bg-border/60 mx-0.5" />
+        <div className="h-4 w-px bg-border/60 mx-0.5 shrink-0" />
 
         {/* Rotate Tool */}
         <Button
@@ -356,7 +368,7 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
           size="icon-xs"
           disabled={!pdfBase64}
           onClick={() => setRotation((prev) => (prev + 90) % 360)}
-          className="size-7 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30"
+          className="size-7 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer shrink-0"
           title="Rotate 90° Clockwise"
         >
           <RotateCwIcon className="size-3.5" />
@@ -369,7 +381,7 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
             size="icon-xs"
             disabled={!pdfBase64}
             onClick={toggleFullscreen}
-            className={`size-7 rounded-md cursor-pointer ${
+            className={`size-7 rounded-md cursor-pointer shrink-0 ${
               isFullscreen
                 ? 'bg-primary/10 text-primary'
                 : 'text-muted-foreground hover:text-foreground'
@@ -383,10 +395,10 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
             )}
           </Button>
         )}
+      </div>
 
-        <div className="h-4 w-px bg-border/60 mx-0.5" />
-
-        {/* Toggle Right Panel Button */}
+      {/* Toggle Right Panel Button */}
+      <div className="pl-1.5 shrink-0 border-l border-border/60">
         <Button
           variant={showExtractionPanel ? 'secondary' : 'ghost'}
           size="icon-xs"
@@ -396,7 +408,7 @@ export const PDFToolbar: React.FC<PDFToolbarProps> = ({
               ? 'bg-primary/10 text-primary'
               : 'text-muted-foreground hover:text-foreground'
           }`}
-          title={showExtractionPanel ? 'Collapse Panel' : 'Expand Panel'}
+          title={showExtractionPanel ? 'Collapse Extraction Studio' : 'Open Extraction Studio'}
         >
           {showExtractionPanel ? (
             <PanelRightCloseIcon className="size-3.5" />
