@@ -217,16 +217,47 @@ def update_price_item_in_excel(file_path: str, row_idx: int, code: str, name: st
         print(f"[Matcher] Error updating row {row_idx} in SQLite: {e}")
         return False
 
-def update_price_item_rule(row_idx: int, rule_text: str) -> bool:
-    """Updates the plain-English mapping rule for a specific item in SQLite."""
+def update_price_item_rule(
+    row_idx: int,
+    rule_text: str,
+    equipment_type: Optional[str] = None,
+    action_type: Optional[str] = None,
+    location_type: Optional[str] = None,
+    calc_rule: Optional[str] = None,
+    aggregation_rule: Optional[str] = None,
+    pricing_group: Optional[str] = None
+) -> bool:
+    """Updates the mapping rule and structured calculation metadata for a specific item in SQLite."""
     try:
         from services.db import get_db_connection
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE price_items SET mapping_rule = ? WHERE id = ?",
-            (rule_text.strip(), row_idx)
-        )
+
+        updates = ["mapping_rule = ?"]
+        params = [rule_text.strip()]
+
+        if equipment_type is not None:
+            updates.append("equipment_type = ?")
+            params.append(equipment_type.strip())
+        if action_type is not None:
+            updates.append("action_type = ?")
+            params.append(action_type.strip())
+        if location_type is not None:
+            updates.append("location_type = ?")
+            params.append(location_type.strip())
+        if calc_rule is not None:
+            updates.append("calc_rule = ?")
+            params.append(calc_rule.strip())
+        if aggregation_rule is not None:
+            updates.append("aggregation_rule = ?")
+            params.append(aggregation_rule.strip())
+        if pricing_group is not None:
+            updates.append("pricing_group = ?")
+            params.append(pricing_group.strip())
+
+        params.append(row_idx)
+        sql = f"UPDATE price_items SET {', '.join(updates)} WHERE id = ?"
+        cursor.execute(sql, tuple(params))
         conn.commit()
         conn.close()
         return True

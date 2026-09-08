@@ -958,7 +958,13 @@ class ExportPayload(BaseModel):
     quantities: Optional[Dict[str, float]] = None
 
 class RuleUpdateModel(BaseModel):
-    mapping_rule: str
+    mapping_rule: Optional[str] = ""
+    equipment_type: Optional[str] = None
+    action_type: Optional[str] = None
+    location_type: Optional[str] = None
+    calc_rule: Optional[str] = None
+    aggregation_rule: Optional[str] = None
+    pricing_group: Optional[str] = None
 
 class BatchRuleUpdateModel(BaseModel):
     rules: List[Dict[str, Any]]
@@ -969,7 +975,7 @@ def get_prompt_rules(
     search: Optional[str] = None,
     status: Optional[str] = "all"
 ) -> Dict[str, Any]:
-    """Retrieves all price items with their plain-English prompt mapping rules."""
+    """Retrieves all price items with their plain-English prompt mapping rules and structured calculation metadata."""
     from services.db import get_db_connection, get_default_price_list_id
     if price_list_id is None:
         price_list_id = get_default_price_list_id()
@@ -977,7 +983,8 @@ def get_prompt_rules(
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, code, name, unit, rate, mapping_rule 
+        SELECT id, code, name, unit, rate, mapping_rule,
+               equipment_type, action_type, location_type, calc_rule, aggregation_rule, pricing_group
         FROM price_items 
         WHERE price_list_id = ? 
         ORDER BY id ASC
@@ -990,7 +997,9 @@ def get_prompt_rules(
     
     for r in rows:
         rule_str = r["mapping_rule"] or ""
-        is_configured = bool(rule_str.strip())
+        calc_rule = r["calc_rule"] or ""
+        eq_type = r["equipment_type"] or ""
+        is_configured = bool(rule_str.strip() or calc_rule.strip())
         if is_configured:
             configured_count += 1
             
@@ -1003,7 +1012,7 @@ def get_prompt_rules(
             s = search.strip().lower()
             code_match = s in (r["code"] or "").lower()
             name_match = s in (r["name"] or "").lower()
-            rule_match = s in rule_str.lower()
+            rule_match = s in rule_str.lower() or s in calc_rule.lower() or s in eq_type.lower()
             if not (code_match or name_match or rule_match):
                 continue
                 
@@ -1014,7 +1023,13 @@ def get_prompt_rules(
             "name": r["name"] or "",
             "unit": r["unit"] or "each",
             "rate": float(r["rate"] or 0.0),
-            "mapping_rule": rule_str
+            "mapping_rule": rule_str,
+            "equipment_type": r["equipment_type"] or "",
+            "action_type": r["action_type"] or "",
+            "location_type": r["location_type"] or "",
+            "calc_rule": r["calc_rule"] or "",
+            "aggregation_rule": r["aggregation_rule"] or "SUM",
+            "pricing_group": r["pricing_group"] or ""
         })
 
     return {
@@ -1028,12 +1043,31 @@ def get_prompt_rules(
 
 @app.put("/api/rules/{row_idx}")
 def update_item_rule(row_idx: int, payload: RuleUpdateModel) -> Dict[str, Any]:
-    """Updates the plain-English mapping rule for a specific price item."""
+    """Updates the mapping rule and structured calculation metadata for a specific price item."""
     from services.excel_service import update_price_item_rule
-    success = update_price_item_rule(row_idx, payload.mapping_rule)
+    success = update_price_item_rule(
+        row_idx,
+        payload.mapping_rule or "",
+        payload.equipment_type,
+        payload.action_type,
+        payload.location_type,
+        payload.calc_rule,
+        payload.aggregation_rule,
+        payload.pricing_group
+    )
     if not success:
         raise HTTPException(status_code=500, detail=f"Failed to update rule for item {row_idx}")
-    return {"status": "success", "row_idx": row_idx, "mapping_rule": payload.mapping_rule.strip()}
+    return {
+        "status": "success",
+        "row_idx": row_idx,
+        "mapping_rule": (payload.mapping_rule or "").strip(),
+        "equipment_type": payload.equipment_type,
+        "action_type": payload.action_type,
+        "location_type": payload.location_type,
+        "calc_rule": payload.calc_rule,
+        "aggregation_rule": payload.aggregation_rule,
+        "pricing_group": payload.pricing_group
+    }
 
 @app.delete("/api/rules/{row_idx}")
 def delete_item_rule(row_idx: int) -> Dict[str, Any]:
