@@ -4,12 +4,12 @@ import * as React from "react"
 import {
   Boxes,
   Building2,
-  Cpu,
   FileText,
   Layers,
   LayoutDashboard,
   Moon,
   Settings2,
+  Sparkles,
   Sun,
   Tag,
 } from "lucide-react"
@@ -69,9 +69,9 @@ const data = {
       icon: <Layers className="size-4" />,
     },
     {
-      id: "equipment",
-      title: "Equipment",
-      icon: <Cpu className="size-4" />,
+      id: "rules",
+      title: "Prompt Rules",
+      icon: <Sparkles className="size-4" />,
     },
     {
       id: "pricelist",

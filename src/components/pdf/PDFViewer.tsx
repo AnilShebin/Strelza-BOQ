@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PDFToolbar } from './PDFToolbar';
 import { PDFCanvas } from './PDFCanvas';
 import { PDFExtractionPanel } from './PDFExtractionPanel';
@@ -287,6 +287,36 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
   const currentPageElements =
     analyzedData?.elements?.filter((el: any) => el.page === currentPage) || [];
+
+  const currentSheetTitle = useMemo(() => {
+    // 1. Direct from analyzedData.page_titles dictionary
+    const titleFromDict =
+      analyzedData?.page_titles?.[currentPage] ||
+      analyzedData?.page_titles?.[String(currentPage)];
+    if (titleFromDict && typeof titleFromDict === 'string' && titleFromDict.trim()) {
+      return titleFromDict.trim();
+    }
+    // 2. From currentPageElements sheet_title property
+    const elWithTitle = currentPageElements.find(
+      (el: any) => el.sheet_title && String(el.sheet_title).trim()
+    );
+    if (elWithTitle?.sheet_title) {
+      return String(elWithTitle.sheet_title).trim();
+    }
+    // 3. From Title Block Metadata structured element
+    const titleBlockEl = currentPageElements.find(
+      (el: any) => el.title === 'Title Block Metadata'
+    );
+    if (titleBlockEl?.content?.fields) {
+      const f = titleBlockEl.content.fields;
+      const st = f['Sheet Title'] || f['SHEET TITLE'] || f['Title'];
+      if (st && typeof st === 'string' && st.trim()) {
+        return st.trim();
+      }
+    }
+    return '';
+  }, [analyzedData, currentPageElements, currentPage]);
+
   const pageMarkupCount = (markups || []).filter((s) => s.page === currentPage).length;
   const [internalHighlightAll, setInternalHighlightAll] = useState(false);
   const activeHighlightAll =
@@ -388,8 +418,9 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
               <span className="truncate max-w-sm">
                 {pdfName}
               </span>
-              <span>
-                Sheet {currentPage} of {totalPages || 1} • {Math.round(scale * 100)}% Zoom
+              <span className="truncate max-w-xl text-right">
+                Sheet {currentPage} of {totalPages || 1}
+                {currentSheetTitle ? ` • ${currentSheetTitle}` : ''} • {Math.round(scale * 100)}% Zoom
               </span>
             </div>
           )}

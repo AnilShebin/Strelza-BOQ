@@ -41,7 +41,7 @@ export function NavMain({
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Platform</SidebarGroupLabel>
-      <SidebarMenu>
+      <SidebarMenu className="gap-1.5">
         {items.map((item) => {
           const isItemActive = activeTab ? item.id === activeTab : item.isActive
           const hasSubItems = item.items && item.items.length > 0

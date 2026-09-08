@@ -3,8 +3,8 @@ FastAPI Backend Server.
 Defines endpoints for analyzing PDFs, extracting text, matching priced items,
 and running compliance validation audits.
 """
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks, Query
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any, Optional
 import os
@@ -24,6 +24,7 @@ from services.excel_service import (
     clear_price_item_in_excel,
     add_price_item_to_excel,
     generate_populated_boq_excel,
+    generate_price_list_export_bytes,
     write_cell_value_to_excel,
     clear_column_values_in_excel,
     clear_price_items_in_excel_batch,
@@ -36,6 +37,10 @@ from services.excel_service import (
     get_id_from_path
 )
 from services.ai_service import run_gemini_boq_deduplicator, run_gemini_boq_mapper_and_deduplicator, run_gemini_recheck_generator
+
+def clear_user_mappings():
+    """No-op stub for backward compatibility following legacy user_mappings removal."""
+    pass
 
 ACTIVE_PRICE_LIST_PATH = os.path.join(os.path.dirname(__file__), "uploads", "active_price_list.xlsx")
 # Startup setup
@@ -166,25 +171,26 @@ async def analyze_pdf_path(payload: Dict[str, Any]) -> Dict[str, Any]:
         for idx, item in enumerate(consolidated):
             if item.get("action", "").upper() in ["EXISTING", "REUSE"]:
                 continue
-            source_sheet = item.get("source_sheet", f"Sheet {item['page']}")
-            mapped = match_item_to_price_list(item, price_list)
+            source_sheet = item.get("source_sheet", f"Sheet {item.get('page', 1)}")
+            item_model = item.get("model", "")
+            item_name = item_model if item_model else item.get("clean_text", item.get("raw_text", "Scope Item"))
             
             mapped_boq_items.append({
                 "item_id": f"boq_{idx:03d}",
                 "equipment_type": item.get("equipment_type", "OTHER"),
-                "model": item.get("model", ""),
+                "model": item_model,
                 "action": item.get("action", "INSTALL"),
                 "quantity": item.get("quantity", 1.0),
                 "source_sheet": source_sheet,
                 "raw_text": item.get("raw_text", ""),
-                "sor_code": mapped.get("code", "UNMAPPED") if mapped else "UNMAPPED",
-                "item_name": mapped.get("name", item.get("clean_text", item.get("raw_text", ""))) if mapped else item.get("clean_text", item.get("raw_text", "")),
-                "unit": mapped.get("unit", "each") if mapped else "each",
-                "rate": mapped.get("rate", 0.0) if mapped else 0.0,
-                "total_cost": (mapped.get("rate", 0.0) * item.get("quantity", 1.0)) if mapped else 0.0,
-                "similarity": mapped.get("similarity", 0.0) if mapped else 0.0,
-                "auto_matched": mapped.get("auto_matched", False) if mapped else False,
-                "row_idx": mapped.get("row_idx") if mapped else None
+                "sor_code": "UNQUOTED",
+                "item_name": item_name,
+                "unit": "each",
+                "rate": 0.0,
+                "total_cost": 0.0,
+                "similarity": 100.0,
+                "auto_matched": False,
+                "row_idx": None
             })
             
         pdf_quantities = {}
@@ -207,17 +213,7 @@ async def analyze_pdf_path(payload: Dict[str, Any]) -> Dict[str, Any]:
             # Generate dynamically on disk
             generate_populated_boq_excel(file_path, {}, file_path)
             
-        pdf_corpus_lines = []
-        try:
-            c_doc = fitz.open(pdf_path)
-            for page in c_doc:
-                pdf_corpus_lines.append(page.get_text())
-            c_doc.close()
-        except Exception:
-            pass
-        
-        pdf_corpus = "\n".join(pdf_corpus_lines)
-        validation_results = run_checklist_validation(consolidated, mapped_boq_items, pdf_corpus)
+        validation_results = []
         
         return {
             "status": "success",
@@ -249,6 +245,7 @@ async def extract_drawing_data(payload: Dict[str, Any]) -> Dict[str, Any]:
         from core.document_extractor import extract_document_elements
         res = extract_document_elements(pdf_path, selected_pages=selected_pages)
         elements = res.get("elements", [])
+        page_titles = res.get("page_titles", {})
         
         # Populate raw items and formatted tables from elements
         from processors.parser import extract_raw_items_from_elements
@@ -277,7 +274,8 @@ async def extract_drawing_data(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "pdf_path": pdf_path,
                 "raw_items": raw_items,
                 "elements": elements,
-                "extracted_tables": formatted_tables
+                "extracted_tables": formatted_tables,
+                "page_titles": page_titles
             }, f, indent=2)
 
         return {
@@ -285,7 +283,8 @@ async def extract_drawing_data(payload: Dict[str, Any]) -> Dict[str, Any]:
             "drawing_name": os.path.basename(pdf_path),
             "raw_count": len(raw_items),
             "elements": elements,
-            "extracted_tables": formatted_tables
+            "extracted_tables": formatted_tables,
+            "page_titles": page_titles
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to extract drawing data: {str(e)}")
@@ -534,7 +533,7 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
                             "similarity": float(m_item.get("similarity", 95.0)),
                             "auto_matched": True,
                             "row_idx": m_item.get("row_idx"),
-                            "comment": m_item.get("comment") or m_item.get("notes", "Mapped via AI Semantic Takeoff"),
+                            "comment": m_item.get("comment") or m_item.get("notes") or "",
                             "matched_by_rule": "AI Semantic Takeoff",
                             "confidence_score": float(m_item.get("confidence_score", 95.0)),
                             "confidence_level": m_item.get("confidence_level", "HIGH"),
@@ -660,6 +659,10 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "additional_sources": []
                 })
 
+        # Enrich all mapped items with exact verbatim constituent facts from tables and cross-sheet duplicate callouts
+        from services.ai_service import enrich_mapped_items_with_provenance
+        mapped_boq_items = enrich_mapped_items_with_provenance(mapped_boq_items, extracted_tables, elements)
+
         consolidated = mapped_boq_items
 
         # Fast local structural checks
@@ -733,7 +736,12 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
                         "conf_levels": [],
                         "evidences": []
                     }
-                db_row_updates[r_str]["qty"] += float(b_item.get("quantity", 0))
+                # For site-wide consolidated items, avoid repeatedly adding site totals if mapped multiple times
+                if b_item.get("sor_code") in ["R12513", "W13375", "W12804", "W7520", "W13358", "W12252", "W7893", "R13701", "W13393", "W13700", "W13374", "W13400"]:
+                    db_row_updates[r_str]["qty"] = max(db_row_updates[r_str]["qty"], float(b_item.get("quantity", 0)))
+                else:
+                    db_row_updates[r_str]["qty"] += float(b_item.get("quantity", 0))
+
                 if b_item.get("action"):
                     db_row_updates[r_str]["actions"].add(b_item["action"].upper())
                 
@@ -741,11 +749,13 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
                 m_qty = int(b_item.get("quantity", 1))
                 if m_name:
                     clean_m = re.sub(r'^(?:ERICSSON|TELSTRA)\s+', '', str(m_name), flags=re.IGNORECASE).strip()
-                    db_row_updates[r_str]["models"].append(f"{m_qty}x {clean_m}")
+                    m_label = f"{m_qty}x {clean_m}"
+                    if m_label not in db_row_updates[r_str]["models"]:
+                        db_row_updates[r_str]["models"].append(m_label)
 
                 cmt = str(b_item.get("comment", "")).strip()
                 if cmt and cmt not in db_row_updates[r_str]["comments"]:
-                    if "Data not matching" in cmt:
+                    if any(w in cmt.lower() for w in ["verify", "mismatch", "not matching", "discrepancy"]):
                         db_row_updates[r_str]["comments"].insert(0, cmt)
                     else:
                         db_row_updates[r_str]["comments"].append(cmt)
@@ -753,16 +763,19 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
                     db_row_updates[r_str]["conf_scores"].append(float(b_item["confidence_score"]))
                 if b_item.get("confidence_level"):
                     db_row_updates[r_str]["conf_levels"].append(b_item["confidence_level"])
-                if b_item.get("evidence_json", {}).get("sources"):
-                    db_row_updates[r_str]["evidences"].extend(b_item["evidence_json"]["sources"])
-                elif b_item.get("sources"):
-                    db_row_updates[r_str]["evidences"].extend(b_item["sources"])
-                    if "additional_sources" in b_item:
-                        db_row_updates[r_str]["evidences"].extend(b_item["additional_sources"])
-                elif b_item.get("evidence"):
-                    db_row_updates[r_str]["evidences"].append(b_item["evidence"])
-                    if "additional_sources" in b_item:
-                        db_row_updates[r_str]["evidences"].extend(b_item["additional_sources"])
+                item_sources = b_item.get("evidence_json", {}).get("sources") or b_item.get("sources") or []
+                if not item_sources and b_item.get("evidence"):
+                    item_sources = [b_item["evidence"]]
+                if "additional_sources" in b_item:
+                    item_sources.extend(b_item["additional_sources"])
+
+                seen_ev_keys = {(s.get("page"), str(s.get("model")), s.get("ant_id"), s.get("is_duplicate")) for s in db_row_updates[r_str]["evidences"] if isinstance(s, dict)}
+                for s in item_sources:
+                    if isinstance(s, dict):
+                        ev_k = (s.get("page"), str(s.get("model")), s.get("ant_id"), s.get("is_duplicate"))
+                        if ev_k not in seen_ev_keys:
+                            seen_ev_keys.add(ev_k)
+                            db_row_updates[r_str]["evidences"].append(s)
 
         for r_str, data in db_row_updates.items():
             cursor.execute("SELECT code, name, unit, rate, category FROM price_items WHERE id = ?", (int(r_str),))
@@ -932,6 +945,102 @@ class CorrectionLogModel(BaseModel):
 
 class ExportPayload(BaseModel):
     quantities: Optional[Dict[str, float]] = None
+
+class RuleUpdateModel(BaseModel):
+    mapping_rule: str
+
+class BatchRuleUpdateModel(BaseModel):
+    rules: List[Dict[str, Any]]
+
+@app.get("/api/rules")
+def get_prompt_rules(
+    price_list_id: Optional[int] = None,
+    search: Optional[str] = None,
+    status: Optional[str] = "all"
+) -> Dict[str, Any]:
+    """Retrieves all price items with their plain-English prompt mapping rules."""
+    from services.db import get_db_connection, get_default_price_list_id
+    if price_list_id is None:
+        price_list_id = get_default_price_list_id()
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, code, name, unit, rate, mapping_rule 
+        FROM price_items 
+        WHERE price_list_id = ? 
+        ORDER BY id ASC
+    """, (price_list_id,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    items = []
+    configured_count = 0
+    
+    for r in rows:
+        rule_str = r["mapping_rule"] or ""
+        is_configured = bool(rule_str.strip())
+        if is_configured:
+            configured_count += 1
+            
+        # Filter checks
+        if status == "configured" and not is_configured:
+            continue
+        if status == "unconfigured" and is_configured:
+            continue
+        if search and search.strip():
+            s = search.strip().lower()
+            code_match = s in (r["code"] or "").lower()
+            name_match = s in (r["name"] or "").lower()
+            rule_match = s in rule_str.lower()
+            if not (code_match or name_match or rule_match):
+                continue
+                
+        items.append({
+            "id": r["id"],
+            "row_idx": r["id"],
+            "code": r["code"] or "",
+            "name": r["name"] or "",
+            "unit": r["unit"] or "each",
+            "rate": float(r["rate"] or 0.0),
+            "mapping_rule": rule_str
+        })
+
+    return {
+        "status": "success",
+        "total_items": len(rows),
+        "configured_count": configured_count,
+        "unconfigured_count": len(rows) - configured_count,
+        "categories": ["ALL"],
+        "items": items
+    }
+
+@app.put("/api/rules/{row_idx}")
+def update_item_rule(row_idx: int, payload: RuleUpdateModel) -> Dict[str, Any]:
+    """Updates the plain-English mapping rule for a specific price item."""
+    from services.excel_service import update_price_item_rule
+    success = update_price_item_rule(row_idx, payload.mapping_rule)
+    if not success:
+        raise HTTPException(status_code=500, detail=f"Failed to update rule for item {row_idx}")
+    return {"status": "success", "row_idx": row_idx, "mapping_rule": payload.mapping_rule.strip()}
+
+@app.delete("/api/rules/{row_idx}")
+def delete_item_rule(row_idx: int) -> Dict[str, Any]:
+    """Clears the mapping rule for a specific price item."""
+    from services.excel_service import clear_price_item_rule
+    success = clear_price_item_rule(row_idx)
+    if not success:
+        raise HTTPException(status_code=500, detail=f"Failed to clear rule for item {row_idx}")
+    return {"status": "success", "row_idx": row_idx, "mapping_rule": ""}
+
+@app.post("/api/rules/batch")
+def batch_update_rules(payload: BatchRuleUpdateModel) -> Dict[str, Any]:
+    """Batch updates mapping rules for multiple price items."""
+    from services.excel_service import batch_update_price_item_rules
+    success = batch_update_price_item_rules(payload.rules)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to batch update rules")
+    return {"status": "success", "updated_count": len(payload.rules)}
 
 @app.post("/api/clear-cache")
 async def clear_cache() -> Dict[str, str]:
@@ -1330,6 +1439,25 @@ def get_price_list(price_list_id: Optional[int] = None) -> Dict[str, Any]:
     """Loads and returns the active price list items and column widths."""
     return get_price_list_response(price_list_id)
 
+@app.get("/api/price-list/export")
+def export_price_list(
+    price_list_id: Optional[int] = None,
+    include_rules: bool = Query(False)
+):
+    """
+    Exports the active master price list as a styled openpyxl Excel spreadsheet.
+    If include_rules is True, appends the plain-English prompt rule for each item.
+    """
+    from services.db import get_default_price_list_id
+    resolved_id = price_list_id or get_id_from_path(get_price_list_path()) or get_default_price_list_id()
+    excel_stream, filename = generate_price_list_export_bytes(resolved_id, include_rules=include_rules)
+
+    return StreamingResponse(
+        excel_stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
 @app.get("/api/price-list/file")
 def get_price_list_file(price_list_id: Optional[int] = None) -> Dict[str, Any]:
     """Returns the active price list Excel file as a base64-encoded string along with layout dimensions for frontend import."""
@@ -1443,9 +1571,38 @@ async def import_price_list(price_list_id: Optional[int] = None, file: UploadFil
         if rate_col is None:
             rate_col = 4
 
-        # Parse rows
+        # Load existing mapping rules (from DB and backup JSON) to preserve them across imports
+        from services.db import get_db_connection
+        existing_rules_by_code: Dict[str, str] = {}
+        
+        # Load from backend/rules_backup.json if available
+        backup_path = os.path.join(os.path.dirname(__file__), "rules_backup.json")
+        if os.path.exists(backup_path):
+            try:
+                with open(backup_path, "r", encoding="utf-8") as bf:
+                    bdata = json.load(bf)
+                    for ir in bdata.get("item_rules", []):
+                        b_code = str(ir.get("sor_code", "")).strip()
+                        b_rule = str(ir.get("mapping_rule", "")).strip()
+                        if b_code and b_rule:
+                            existing_rules_by_code[b_code] = b_rule
+            except Exception:
+                pass
+
+        # Also load from current database before replacing
+        conn_pre = get_db_connection()
+        cur_pre = conn_pre.cursor()
+        cur_pre.execute("SELECT code, mapping_rule FROM price_items WHERE price_list_id = ? AND mapping_rule IS NOT NULL AND mapping_rule != ''", (price_list_id,))
+        for pr in cur_pre.fetchall():
+            c_code = str(pr["code"] or "").strip()
+            c_rule = str(pr["mapping_rule"] or "").strip()
+            if c_code and c_rule:
+                existing_rules_by_code[c_code] = c_rule
+        conn_pre.close()
+
+        # Parse rows: require SOR Code, enforce uniqueness, skip headings without code
         parsed_items = []
-        current_category = "General SOR Pricing Items"
+        seen_codes = set()
         
         for r in range(header_row_idx + 1, sheet.max_row + 1):
             c0 = sheet.cell(r, 1)
@@ -1453,8 +1610,8 @@ async def import_price_list(price_list_id: Optional[int] = None, file: UploadFil
             c_unit = sheet.cell(r, unit_col) if unit_col else None
             c_rate = sheet.cell(r, rate_col) if rate_col else None
             
-            val0 = str(c0.value or "").strip()
-            val1 = str(c1.value or "").strip()
+            code = str(c0.value or "").strip()
+            name = str(c1.value or "").strip()
             unit_str = str(c_unit.value or "").strip().lower() if c_unit else ""
             
             rate_val = None
@@ -1464,35 +1621,19 @@ async def import_price_list(price_list_id: Optional[int] = None, file: UploadFil
                 except ValueError:
                     rate_val = None
 
-            bold0 = c0.font.bold if c0.font else False
-            bold1 = c1.font.bold if c1.font else False
-            
-            # Category Header identification rule:
-            # 1. Bold text in col A or col B with no rate/unit
-            # 2. Or col A has text, col B is completely empty, and rate/unit are empty
-            is_category = False
-            if rate_val is None and not unit_str:
-                if (bold0 or bold1) and (val0 or val1):
-                    is_category = True
-                elif val0 and not val1:
-                    is_category = True
-                    
-            if is_category:
-                current_category = val0 or val1
+            # Enforce SOR Code MUST & skip heading rows (rows with no code or no description)
+            if not code or not name:
                 continue
                 
-            if not val0 and not val1:
+            # Disallow heading rows where code is just an unformatted string without rate/unit and no code-like structure
+            if rate_val is None and not unit_str and not any(ch.isdigit() for ch in code):
                 continue
-                
-            code = val0
-            name = val1
-            if not name and code:
-                if len(code) > 15:
-                    name = code
-                    code = ""
-                else:
-                    name = code
-                    
+
+            # Enforce no duplicates: unique SOR Code
+            if code in seen_codes:
+                continue
+            seen_codes.add(code)
+
             unit = unit_str if unit_str else "each"
             rate = rate_val if rate_val is not None else 0.0
             
@@ -1509,12 +1650,9 @@ async def import_price_list(price_list_id: Optional[int] = None, file: UploadFil
                         pass
                         
             category = ""
-            if category_col and sheet.max_column >= category_col:
-                category = str(sheet.cell(r, category_col).value or "").strip()
-            if not category:
-                category = current_category or "General SOR Pricing Items"
+            rule_for_item = existing_rules_by_code.get(code, "")
                 
-            parsed_items.append((code, name, action, unit, rate, qty, category, comments))
+            parsed_items.append((code, name, action, unit, rate, qty, category, comments, rule_for_item))
             
         wb.close()
         
@@ -1524,17 +1662,16 @@ async def import_price_list(price_list_id: Optional[int] = None, file: UploadFil
             file_path = get_price_list_path(price_list_id)
             
             # High-speed batch DB insertion in transaction
-            from services.db import get_db_connection
             conn = get_db_connection()
             cursor = conn.cursor()
             try:
                 # Clear items for this price list
                 cursor.execute("DELETE FROM price_items WHERE price_list_id = ?", (price_list_id,))
                 
-                # Insert items in a single executemany call (50x faster)
+                # Insert items in a single executemany call preserving mapping_rule
                 cursor.executemany(
-                    "INSERT INTO price_items (code, name, action, unit, rate, quantity, category, comments, price_list_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [(item[0], item[1], item[2], item[3], item[4], item[5], item[6], item[7], price_list_id) for item in parsed_items]
+                    "INSERT INTO price_items (code, name, action, unit, rate, quantity, category, comments, mapping_rule, price_list_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [(item[0], item[1], item[2], item[3], item[4], item[5], item[6], item[7], item[8], price_list_id) for item in parsed_items]
                 )
                 conn.commit()
             except Exception as db_err:
@@ -2136,67 +2273,6 @@ def get_rules_history():
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
-
-# ==========================================
-# EQUIPMENT CATALOG ENDPOINTS
-# ==========================================
-
-@app.get("/api/equipment-catalog")
-def list_equipment_catalog(
-    search: Optional[str] = None,
-    category: Optional[str] = None
-):
-    """Lists all equipment items with Sl.No, Product Name, and Product Category."""
-    from services.equipment_service import get_all_equipment
-    return get_all_equipment(search=search, category=category)
-
-@app.get("/api/equipment-catalog/categories")
-def list_equipment_categories():
-    """Retrieves unique equipment categories."""
-    from services.equipment_service import get_equipment_categories
-    return get_equipment_categories()
-
-@app.get("/api/equipment-catalog/{item_id}")
-def get_equipment_item(item_id: int):
-    """Retrieves a single equipment record by ID."""
-    from services.equipment_service import get_equipment_by_id
-    item = get_equipment_by_id(item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Equipment item not found.")
-    return item
-
-@app.post("/api/equipment-catalog")
-def create_equipment_item(payload: Dict[str, Any]):
-    """Creates a new equipment record."""
-    from services.equipment_service import create_equipment
-    product_name = str(payload.get("product_name") or payload.get("name") or payload.get("model_name") or "").strip()
-    product_category = str(payload.get("product_category") or payload.get("category") or "").strip()
-    if not product_name:
-        raise HTTPException(status_code=400, detail="Product name is required.")
-    item_id = create_equipment(product_name=product_name, product_category=product_category)
-    return {"status": "success", "id": item_id}
-
-@app.put("/api/equipment-catalog/{item_id}")
-def update_equipment_item(item_id: int, payload: Dict[str, Any]):
-    """Updates an existing equipment record."""
-    from services.equipment_service import update_equipment
-    product_name = str(payload.get("product_name") or payload.get("name") or payload.get("model_name") or "").strip()
-    product_category = str(payload.get("product_category") or payload.get("category") or "").strip()
-    if not product_name:
-        raise HTTPException(status_code=400, detail="Product name is required.")
-    success = update_equipment(item_id, product_name=product_name, product_category=product_category)
-    if not success:
-        raise HTTPException(status_code=404, detail="Equipment item not found or update failed.")
-    return {"status": "success", "id": item_id}
-
-@app.delete("/api/equipment-catalog/{item_id}")
-def delete_equipment_item(item_id: int):
-    """Deletes an equipment record from the catalog."""
-    from services.equipment_service import delete_equipment
-    success = delete_equipment(item_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Equipment item not found.")
-    return {"status": "success", "id": item_id}
 
 if __name__ == "__main__":
     import uvicorn

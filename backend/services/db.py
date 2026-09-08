@@ -137,21 +137,8 @@ def init_db():
         evidence_json TEXT DEFAULT ''
     );
     """)
-    # Equipment Catalog (Stores: ID/Sl.No, Product Name, Product Category)
-    cursor.execute("PRAGMA table_info(equipment_catalog)")
-    existing_cols = {row[1] for row in cursor.fetchall()}
-    if existing_cols and "canonical_id" in existing_cols and "product_name" not in existing_cols:
-        cursor.execute("DROP TABLE equipment_catalog")
-        conn.commit()
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS equipment_catalog (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        product_name TEXT NOT NULL,
-        product_category TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
+    # Equipment catalog removed
+    cursor.execute("DROP TABLE IF EXISTS equipment_catalog")
     conn.commit()
 
     # Migrations for mapping_rules Venmo columns
@@ -233,6 +220,12 @@ def init_db():
 
     try:
         cursor.execute("ALTER TABLE price_items ADD COLUMN attributes_json TEXT DEFAULT ''")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE price_items ADD COLUMN mapping_rule TEXT DEFAULT ''")
         conn.commit()
     except sqlite3.OperationalError:
         pass

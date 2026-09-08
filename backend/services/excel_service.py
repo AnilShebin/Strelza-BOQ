@@ -74,29 +74,15 @@ def load_master_price_list(file_path: str = "", price_list_id: Optional[int] = N
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, code, name, unit, rate, quantity, category, action, comments, confidence_score, confidence_level, evidence_json, attributes_json FROM price_items WHERE price_list_id = ? ORDER BY id",
+            "SELECT id, code, name, unit, rate, quantity, category, action, comments, confidence_score, confidence_level, evidence_json, attributes_json, mapping_rule FROM price_items WHERE price_list_id = ? ORDER BY id",
             (price_list_id,)
         )
         rows = cursor.fetchall()
         conn.close()
         
         price_items = []
-        current_category = None
         
         for r in rows:
-            cat = r["category"] or "General SOR Pricing Items"
-            if cat != current_category:
-                current_category = cat
-                price_items.append({
-                    "row_idx": 0,
-                    "row_type": "section_header",
-                    "code": "",
-                    "name": current_category,
-                    "unit": "",
-                    "rate": 0.0,
-                    "cells": [current_category, "", "", "", "", "", "", ""]
-                })
-                
             qty_val = r["quantity"]
             qty_str = ""
             if qty_val:
@@ -120,6 +106,7 @@ def load_master_price_list(file_path: str = "", price_list_id: Optional[int] = N
                 "confidence_level": r["confidence_level"] if "confidence_level" in r.keys() else "HIGH",
                 "evidence_json": r["evidence_json"] if "evidence_json" in r.keys() else "",
                 "attributes_json": r["attributes_json"] if "attributes_json" in r.keys() else "",
+                "mapping_rule": r["mapping_rule"] if "mapping_rule" in r.keys() and r["mapping_rule"] else "",
                 "cells": [
                     r["code"] or "",
                     r["name"] or "",
@@ -222,6 +209,48 @@ def update_price_item_in_excel(file_path: str, row_idx: int, code: str, name: st
         return True
     except Exception as e:
         print(f"[Matcher] Error updating row {row_idx} in SQLite: {e}")
+        return False
+
+def update_price_item_rule(row_idx: int, rule_text: str) -> bool:
+    """Updates the plain-English mapping rule for a specific item in SQLite."""
+    try:
+        from services.db import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE price_items SET mapping_rule = ? WHERE id = ?",
+            (rule_text.strip(), row_idx)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[Rules] Error updating rule for row {row_idx} in SQLite: {e}")
+        return False
+
+def clear_price_item_rule(row_idx: int) -> bool:
+    """Clears the mapping rule for a specific item in SQLite."""
+    return update_price_item_rule(row_idx, "")
+
+def batch_update_price_item_rules(updates: List[Dict[str, Any]]) -> bool:
+    """Batch updates mapping rules for multiple price items."""
+    try:
+        from services.db import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        for u in updates:
+            row_idx = u.get("row_idx") or u.get("id")
+            rule_text = u.get("mapping_rule", "").strip()
+            if row_idx is not None:
+                cursor.execute(
+                    "UPDATE price_items SET mapping_rule = ? WHERE id = ?",
+                    (rule_text, row_idx)
+                )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[Rules] Error in batch update rules: {e}")
         return False
 
 @locked_excel_write
@@ -1386,5 +1415,131 @@ def load_boq_items(price_list_id: Optional[int] = None) -> list[dict[str, Any]]:
     except Exception as e:
         print(f"[Matcher] Error loading BOQ items for list {price_list_id}: {e}")
         return []
+
+
+def generate_price_list_export_bytes(price_list_id: int, include_rules: bool = False):
+    """
+    Generates a beautifully styled openpyxl Excel file containing the full master price list.
+    If include_rules is True, appends the 'Prompt Rule / Instruction' column.
+    Returns (io.BytesIO, filename).
+    """
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    import io
+    import re
+    from services.db import get_db_connection
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM price_lists WHERE id = ?", (price_list_id,))
+    plist_row = cursor.fetchone()
+    list_name = plist_row["name"] if plist_row and plist_row["name"] else f"PriceList_{price_list_id}"
+
+    cursor.execute(
+        "SELECT id, code, name, unit, rate, category, mapping_rule FROM price_items WHERE price_list_id = ? ORDER BY id",
+        (price_list_id,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    wb = openpyxl.Workbook()
+    sheet = wb.active
+    sheet.title = "Schedule of Rates"
+    sheet.views.sheetView[0].showGridLines = True
+
+    if include_rules:
+        headers = ["SOR Code", "Item Description", "Unit", "Rate ($ Excl. GST)", "Prompt Rule / Instruction"]
+    else:
+        headers = ["SOR Code", "Item Description", "Unit", "Rate ($ Excl. GST)"]
+
+    sheet.append(headers)
+
+    header_fill = PatternFill(start_color="1F2937", end_color="1F2937", fill_type="solid")
+    header_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+    thin_border = Border(
+        left=Side(style="thin", color="D0D7DE"),
+        right=Side(style="thin", color="D0D7DE"),
+        top=Side(style="thin", color="D0D7DE"),
+        bottom=Side(style="thin", color="D0D7DE")
+    )
+
+    for col_idx in range(1, len(headers) + 1):
+        cell = sheet.cell(row=1, column=col_idx)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = thin_border
+        if col_idx in (1, 3):  # SOR Code, Unit
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        elif col_idx == 4:  # Rate
+            cell.alignment = Alignment(horizontal="right", vertical="center")
+        else:
+            cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    sheet.row_dimensions[1].height = 26
+
+    data_font = Font(name="Segoe UI", size=10, color="1F2937")
+    code_font = Font(name="Consolas", size=10, color="111827")
+
+    for r_idx, r in enumerate(rows, start=2):
+        code = (r["code"] or "").strip()
+        name = (r["name"] or "").strip()
+        unit = (r["unit"] or "").strip()
+        try:
+            rate = float(r["rate"]) if r["rate"] is not None else 0.0
+        except (ValueError, TypeError):
+            rate = 0.0
+        rule = (r["mapping_rule"] or "").strip()
+
+        if include_rules:
+            row_data = [code, name, unit, rate, rule]
+        else:
+            row_data = [code, name, unit, rate]
+
+        sheet.append(row_data)
+        sheet.row_dimensions[r_idx].height = 22
+
+        for col_idx in range(1, len(headers) + 1):
+            cell = sheet.cell(row=r_idx, column=col_idx)
+            cell.border = thin_border
+            cell.font = data_font
+
+            if col_idx == 1:  # SOR Code
+                cell.font = code_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            elif col_idx == 2:  # Description
+                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            elif col_idx == 3:  # Unit
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            elif col_idx == 4:  # Rate
+                cell.number_format = "$#,##0.00"
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+            elif col_idx == 5 and include_rules:  # Prompt Rule
+                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    # Column widths
+    widths = {
+        1: 18,  # SOR Code
+        2: 52,  # Item Description
+        3: 12,  # Unit
+        4: 18,  # Rate ($ Excl. GST)
+    }
+    if include_rules:
+        widths[5] = 65  # Prompt Rule / Instruction
+
+    for col_idx, width in widths.items():
+        sheet.column_dimensions[get_column_letter(col_idx)].width = width
+
+    sheet.freeze_panes = "A2"
+
+    clean_name = re.sub(r'[^\w\-_\. ]', '_', list_name).strip()
+    suffix = "_With_Rules" if include_rules else ""
+    filename = f"{clean_name}{suffix}.xlsx"
+
+    stream = io.BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+    wb.close()
+    return stream, filename
 
 

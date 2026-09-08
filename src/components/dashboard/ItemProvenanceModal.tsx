@@ -151,27 +151,7 @@ export const ItemProvenanceModal: React.FC<ItemProvenanceModalProps> = ({
     }
   };
 
-  // Clean sector string for display
-  const formatSector = (rawSec?: string): string => {
-    if (!rawSec || rawSec === '-' || rawSec.trim() === '') return '-';
-    const lines = rawSec.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
-    if (lines.length === 0) return '-';
-    
-    const secCodes = Array.from(new Set(lines.map((l) => {
-      const m = l.match(/^(S[0-9]{1,2})/i);
-      return m ? m[1].toUpperCase() : l;
-    })));
 
-    if (secCodes.length === 1) {
-      const firstLine = lines[0];
-      const colonParts = firstLine.split(':');
-      if (colonParts.length > 1 && colonParts[1].trim()) {
-        return `${colonParts[0].trim()} (${colonParts[1].trim()})`;
-      }
-      return secCodes[0];
-    }
-    return secCodes.slice(0, 3).join(', ');
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-fadeIn">
@@ -301,8 +281,6 @@ export const ItemProvenanceModal: React.FC<ItemProvenanceModalProps> = ({
               <thead className="sticky top-0 z-10 bg-bg-app">
                 <tr className="border-b border-border-color text-text-muted text-[11px] font-bold uppercase tracking-wider">
                   <th className="py-2.5 px-3 w-8 text-center bg-bg-app">#</th>
-                  <th className="py-2.5 px-3 w-20 text-center bg-bg-app">Antenna ID</th>
-                  <th className="py-2.5 px-3 w-28 text-center bg-bg-app">Sector</th>
                   <th className="py-2.5 px-3 bg-bg-app min-w-[220px]">Drawing Model & Specifications</th>
                   <th className="py-2.5 px-3 w-20 text-center bg-bg-app">Action</th>
                   <th className="py-2.5 px-3 w-12 text-center bg-bg-app">Qty</th>
@@ -317,7 +295,6 @@ export const ItemProvenanceModal: React.FC<ItemProvenanceModalProps> = ({
                   const pageNum = getPageNum(src);
                   const rowAction = src.action || item.action || 'INSTALL';
                   const displayModel = src.model && src.model !== '-' ? src.model : item.name;
-                  const displayAntId = src.ant_id && src.ant_id !== '-' ? src.ant_id : '-';
                   const displayQty = src.quantity !== undefined ? src.quantity : 1;
                   const isDuplicate = src.matched_rule === 'Duplicated Omitted Note Match' || src.source_table === 'Drawing Callout Note';
 
@@ -325,24 +302,6 @@ export const ItemProvenanceModal: React.FC<ItemProvenanceModalProps> = ({
                     <tr key={idx} className={`hover:bg-bg-app/60 transition-colors ${isDuplicate ? 'opacity-50 select-none' : ''}`}>
                       <td className="py-2.5 px-3 text-center text-text-muted font-mono text-[11px]">
                         {idx + 1}
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-mono font-bold text-accent-blue">
-                        {displayAntId !== '-' ? (
-                          <span className="bg-accent-blue/10 px-1.5 py-0.5 rounded border border-accent-blue/25 text-[11px]">
-                            {displayAntId}
-                          </span>
-                        ) : (
-                          <span className="text-text-muted font-normal">-</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-center text-text-secondary font-semibold">
-                        {src.sector && src.sector !== '-' ? (
-                          <span className="px-2 py-0.5 rounded bg-bg-app border border-border-color text-[11px] font-mono inline-block whitespace-nowrap shadow-sm" title={src.sector}>
-                            {formatSector(src.sector)}
-                          </span>
-                        ) : (
-                          <span className="text-text-muted">-</span>
-                        )}
                       </td>
                       <td className="py-2.5 px-3 text-text-primary">
                         <div className="font-semibold text-xs text-text-primary">{displayModel}</div>
@@ -393,12 +352,12 @@ export const ItemProvenanceModal: React.FC<ItemProvenanceModalProps> = ({
                           <div 
                             className="font-mono text-[9.5px] text-text-muted bg-bg-app/90 px-1.5 py-1 rounded border border-border-color/80 mt-0.5 max-w-xs whitespace-normal break-words leading-relaxed font-medium" 
                             title={isDuplicate 
-                              ? `This note on Page ${pageNum || 'this sheet'} is omitted to prevent double-counting of ${displayAntId !== '-' ? `Antenna ${displayAntId}` : 'this equipment'}, which is already accounted for on Page ${primaryPage || 'another sheet'}.`
+                              ? `This note on Page ${pageNum || 'this sheet'} is omitted to prevent double-counting of this item, which is already accounted for on Page ${primaryPage || 'another sheet'}.`
                               : src.rule_logic
                             }
                           >
                             {isDuplicate 
-                              ? `This note on Page ${pageNum || 'this sheet'} is omitted to prevent double-counting of ${displayAntId !== '-' ? `Antenna ${displayAntId}` : 'this equipment'}, which is already accounted for on Page ${primaryPage || 'another sheet'}.`
+                              ? `This note on Page ${pageNum || 'this sheet'} is omitted to prevent double-counting of this item, already accounted for on Page ${primaryPage || 'another sheet'}.`
                               : src.rule_logic
                             }
                           </div>

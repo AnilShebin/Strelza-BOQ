@@ -5,7 +5,7 @@ import { TopBar } from '@/components/layout/TopBar';
 import { PDFViewer } from '@/components/pdf/PDFViewer';
 import { OverviewDashboard } from '@/components/dashboard/OverviewDashboard';
 import { BOQDashboard } from '@/components/dashboard/BOQDashboard';
-import { EquipmentCatalogViewer } from '@/components/equipment/EquipmentCatalogViewer';
+import { PromptRulesViewer } from '@/components/rules/PromptRulesViewer';
 import { SettingsView } from '@/components/layout/SettingsView';
 import { toast } from 'sonner';
 import { saveWorkspaceToStorage, loadWorkspaceFromStorage } from '@/services/storage';
@@ -536,8 +536,8 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
               cacheClearStatus={null}
               onCancel={() => setActiveTab('dashboard')}
             />
-          ) : activeTab === 'equipment' ? (
-            <EquipmentCatalogViewer />
+          ) : activeTab === 'rules' ? (
+            <PromptRulesViewer />
           ) : activeTab === 'dashboard' ? (
             <OverviewDashboard
               pdfName={activePdf?.name}

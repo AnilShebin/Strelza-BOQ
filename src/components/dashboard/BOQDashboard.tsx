@@ -558,6 +558,29 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
       });
   };
 
+  const handleExportPriceList = (includeRules: boolean) => {
+    fetch(`http://localhost:8000/api/price-list/export?price_list_id=${activePriceListId || 1}&include_rules=${includeRules}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to export price list.');
+        return res.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', includeRules ? 'Master_Price_List_With_Rules.xlsx' : 'Master_Price_List.xlsx');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast('success', includeRules ? 'Price list with rules exported successfully.' : 'Full price list exported successfully.');
+      })
+      .catch((err) => {
+        console.error(err);
+        showToast('error', 'Error exporting price list.');
+      });
+  };
+
   // KPI Calculations from active session data
   const { mapped_items = [], checklist = [] } = analyzedData || {};
   const totalCost = mapped_items.reduce((sum: number, item: any) => sum + (item.total_cost || 0), 0);
@@ -650,6 +673,33 @@ export const BOQDashboard: React.FC<BOQDashboardProps> = ({
                 className="hidden"
               />
             </div>
+          )}
+
+          {/* Export Price List Dropdown for Master Price Catalog */}
+          {viewMode === 'pricelist' && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  disabled={!hasFile}
+                  className="h-8 px-3 text-xs gap-1.5 cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white shadow-2xs font-medium rounded-lg"
+                >
+                  <FileSpreadsheetIcon className="size-3.5" />
+                  <span>Export</span>
+                  <ChevronDownIcon className="size-3 ml-0.5 opacity-80" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 text-xs">
+                <DropdownMenuItem onClick={() => handleExportPriceList(false)} className="cursor-pointer">
+                  <FileSpreadsheetIcon className="size-3.5 mr-2 text-emerald-500" />
+                  <span>Export Price List</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportPriceList(true)} className="cursor-pointer">
+                  <SparklesIcon className="size-3.5 mr-2 text-primary" />
+                  <span>Export Price List with Rules</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
 
           {/* Generate / Update BOQ Button */}

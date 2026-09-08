@@ -45,3 +45,4 @@ backend/uploads/*.pdf
 backend/uploads/*.backup
 backend/uploads/*.json
 backend/uploads/projects/*.slz
+scratch/

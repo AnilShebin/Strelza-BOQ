@@ -329,9 +329,11 @@ CRITICAL INSTRUCTIONS FOR HIGH-FIDELITY EXTRACTION:
 7. Provide the normalized bounding box [ymin, xmin, ymax, xmax] between 0 and 1000 relative to the page.
 8. Map elements to the NATIVE PDF TEXT BLOCKS by matching their IDs (e.g. B0, B1) in the "block_ids" array.
 9. ALWAYS extract the Title Block metadata (typically located in the bottom-right corner of the drawing) as a structured element with title "Title Block Metadata" containing key-value fields: "Drawing Number", "Sheet Number", "Sheet Title", "Site ID", "Site Name".
+10. DRAWING SHEET TITLE EXTRACTION: Extract the exact Drawing Sheet Title from the title block of the drawing (e.g., "DRAWING INDEX AND DOCUMENT CONTROL - SHEET 1 OF 2", "ANTENNA LAYOUT", "WEST ELEVATION", "SOUTH ELEVATION", "EAST ELEVATION", "ANTENNA CONFIGURATION TABLE", etc.) and return it as the top-level property "sheet_title".
 
 Return ONLY a valid JSON object matching the following structure:
 {
+  "sheet_title": "ANTENNA CONFIGURATION TABLE",
   "elements": [
     {
       "type": "structured",
@@ -374,6 +376,7 @@ Return ONLY a valid JSON object matching the following structure:
 
 If no extractable content is found, return:
 {
+  "sheet_title": "",
   "elements": []
 }"""
 
@@ -595,12 +598,69 @@ def parse_and_scale_ai_elements(
             
     return parsed_elements
 
+def extract_sheet_title_from_page(fitz_page, ai_sheet_title: str = "", parsed_elements: Optional[List[Dict[str, Any]]] = None) -> str:
+    """Extracts or resolves sheet title with priority: AI extraction -> Title Block Element -> Fitz Text Analysis."""
+    if ai_sheet_title and len(ai_sheet_title.strip()) > 2:
+        return ai_sheet_title.strip()
+
+    # 1. Check parsed elements for "Title Block Metadata"
+    if parsed_elements:
+        for el in parsed_elements:
+            if el.get("title") == "Title Block Metadata":
+                fields = el.get("content", {}).get("fields", {})
+                if isinstance(fields, dict):
+                    title = fields.get("Sheet Title") or fields.get("SHEET TITLE") or fields.get("Title")
+                    if title and str(title).strip():
+                        return str(title).strip()
+
+    # 2. Heuristic text search in native PDF text
+    try:
+        raw_text = fitz_page.get_text("text")
+        known_titles = [
+            r"DRAWING\s+INDEX\s+AND\s+DOCUMENT\s+CONTROL(?:\s*-\s*SHEET\s+\d+\s+OF\s+\d+)?",
+            r"DRAWING\s+INDEX\b[^\n]*",
+            r"ANTENNA\s+CONFIGURATION\s+TABLE\b[^\n]*",
+            r"ANTENNA\s+LAYOUT\b[^\n]*",
+            r"(?:NORTH|SOUTH|EAST|WEST)\s+ELEVATION\b[^\n]*",
+            r"SITE\s+ELEVATION\b[^\n]*",
+            r"EQUIPMENT\s+LAYOUT\b[^\n]*",
+            r"SITE\s+LAYOUT\b[^\n]*",
+            r"SITE\s+LOCALITY\s+PLAN\b[^\n]*",
+            r"OVERALL\s+SITE\s+PLAN\b[^\n]*",
+            r"SCHEMATIC\s+DIAGRAM\b[^\n]*",
+            r"STRUCTURAL\s+DETAILS\b[^\n]*",
+            r"COVER\s+SHEET\b[^\n]*"
+        ]
+        for pat in known_titles:
+            m = re.search(pat, raw_text, re.IGNORECASE)
+            if m:
+                matched = m.group(0).strip()
+                matched = re.split(r'\s{2,}|(?=\bDWG\b|\bSCALE\b|\bREV\b)', matched)[0].strip()
+                if len(matched) > 3:
+                    return matched
+
+        # 3. Search text blocks for SHEET TITLE label
+        blocks = fitz_page.get_text("blocks")
+        for b in blocks:
+            b_text = b[4].strip()
+            if "SHEET TITLE" in b_text.upper() or "DRAWING TITLE" in b_text.upper():
+                lines = [l.strip() for l in b_text.splitlines() if l.strip()]
+                for i, line in enumerate(lines):
+                    if ("SHEET TITLE" in line.upper() or "DRAWING TITLE" in line.upper()) and i + 1 < len(lines):
+                        candidate = lines[i+1]
+                        if len(candidate) > 2 and not candidate.startswith("DWG") and not candidate.startswith("REV"):
+                            return candidate
+    except Exception as e:
+        print(f"[Document Extractor] Fallback sheet title extraction error: {e}")
+
+    return ""
+
 def process_single_page(
     pdf_path: str,
     page_idx: int,
     api_key: str,
     unified_prompt: str
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], str]:
     """Worker task that processes a single PDF page using a single unified visual scan."""
     page_num = page_idx + 1
     doc = fitz.open(pdf_path)
@@ -627,17 +687,21 @@ def process_single_page(
         print(f"[Document Extractor] Scanning page {page_num} at {dpi} DPI...")
         try:
             img_base64, mime_type = render_page_to_jpeg_safe(fitz_page, dpi)
-            ai_elements, _ = run_gemini_vision_document_extractor(
+            ai_elements, _, ai_sheet_title = run_gemini_vision_document_extractor(
                 img_base64, formatted_blocks, unified_prompt, api_key, mime_type=mime_type
             )
             page_elements = parse_and_scale_ai_elements(
                 ai_elements, page_num, fitz_page, complete_canonical_blocks=complete_canonical_blocks
             )
+            resolved_sheet_title = extract_sheet_title_from_page(fitz_page, ai_sheet_title, page_elements)
+            for el in page_elements:
+                el["sheet_title"] = resolved_sheet_title
         except Exception as e:
             print(f"[Document Extractor] Error during page {page_num} visual extraction: {e}")
             page_elements = []
+            resolved_sheet_title = extract_sheet_title_from_page(fitz_page, "", [])
             
-        return page_elements
+        return page_elements, resolved_sheet_title
     finally:
         doc.close()
 
@@ -650,7 +714,7 @@ def extract_document_elements(pdf_path: str, selected_pages: Optional[List[int]]
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         print("[Document Extractor] Warning: GEMINI_API_KEY is missing.")
-        return {"elements": [], "raw_items": []}
+        return {"elements": [], "raw_items": [], "page_titles": {}}
 
     unified_prompt = get_prompt_by_name("unified_extractor", UNIFIED_EXTRACTOR_PROMPT_TEMPLATE)
     
@@ -680,20 +744,25 @@ def extract_document_elements(pdf_path: str, selected_pages: Optional[List[int]]
             
     # Gather results safely and in page order on the main thread
     results_by_page = {}
+    page_titles = {}
     for fut in as_completed(futures):
         page_num = futures[fut]
         try:
-            results_by_page[page_num] = fut.result()
+            p_elems, p_title = fut.result()
+            results_by_page[page_num] = p_elems
+            page_titles[page_num] = p_title
         except Exception as e:
             print(f"[Document Extractor] Error processing page {page_num}: {e}")
             results_by_page[page_num] = []
+            page_titles[page_num] = ""
             
     for page_num in sorted(results_by_page.keys()):
         all_elements.extend(results_by_page[page_num])
         
     return {
         "elements": all_elements,
-        "raw_items": []
+        "raw_items": [],
+        "page_titles": page_titles
     }
 
 def reextract_single_page_elements(pdf_path: str, page_num: int, existing_elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -738,12 +807,15 @@ def reextract_single_page_elements(pdf_path: str, page_num: int, existing_elemen
         print(f"[Document Extractor] Re-extracting page {page_num} at {dpi} DPI...")
         try:
             img_base64, mime_type = render_page_to_jpeg_safe(fitz_page, dpi)
-            ai_elements, _ = run_gemini_vision_document_extractor(
+            ai_elements, _, ai_sheet_title = run_gemini_vision_document_extractor(
                 img_base64, formatted_blocks, unified_prompt, api_key, mime_type=mime_type
             )
             page_elements = parse_and_scale_ai_elements(
                 ai_elements, page_num, fitz_page, complete_canonical_blocks=complete_canonical_blocks
             )
+            resolved_sheet_title = extract_sheet_title_from_page(fitz_page, ai_sheet_title, page_elements)
+            for el in page_elements:
+                el["sheet_title"] = resolved_sheet_title
         except Exception as e:
             print(f"[Document Extractor] Error during page {page_num} visual extraction: {e}")
             page_elements = []

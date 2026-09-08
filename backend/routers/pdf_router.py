@@ -121,6 +121,13 @@ async def extract_pdf_tables(req: ExtractRequest) -> Dict[str, Any]:
             with open(doc_cache, "r", encoding="utf-8") as f:
                 cached_data = json.load(f)
             cached_elements = cached_data.get("elements", [])
+            cached_page_titles = cached_data.get("page_titles", {})
+            if not cached_page_titles and cached_elements:
+                for el in cached_elements:
+                    p = el.get("page")
+                    st = el.get("sheet_title")
+                    if p and st and p not in cached_page_titles:
+                        cached_page_titles[p] = st
             if cached_elements:
                 print(f"[PDF Router] Serving {len(cached_elements)} cached elements for {clean_stem}")
                 return {
@@ -128,7 +135,8 @@ async def extract_pdf_tables(req: ExtractRequest) -> Dict[str, Any]:
                     "filename": os.path.basename(pdf_path),
                     "elements": cached_elements,
                     "totalElements": len(cached_elements),
-                    "raw_items": cached_data.get("raw_items", [])
+                    "raw_items": cached_data.get("raw_items", []),
+                    "page_titles": cached_page_titles
                 }
         except Exception as e:
             print(f"[PDF Router] Cache read error: {e}")
@@ -137,6 +145,7 @@ async def extract_pdf_tables(req: ExtractRequest) -> Dict[str, Any]:
         result = extract_document_elements(pdf_path, selected_pages=req.pages)
         elements = result.get("elements", [])
         raw_items = result.get("raw_items", [])
+        page_titles = result.get("page_titles", {})
 
         # If specific pages were re-extracted, merge into existing cache
         if req.pages and doc_cache.exists():
@@ -146,6 +155,9 @@ async def extract_pdf_tables(req: ExtractRequest) -> Dict[str, Any]:
                     existing = json.load(f)
                 other_elements = [el for el in existing.get("elements", []) if el.get("page") not in req.pages]
                 elements = other_elements + elements
+                existing_titles = existing.get("page_titles", {})
+                existing_titles.update(page_titles)
+                page_titles = existing_titles
             except Exception:
                 pass
 
@@ -156,7 +168,8 @@ async def extract_pdf_tables(req: ExtractRequest) -> Dict[str, Any]:
                 "pdf_path": pdf_path,
                 "filename": os.path.basename(pdf_path),
                 "elements": elements,
-                "raw_items": raw_items
+                "raw_items": raw_items,
+                "page_titles": page_titles
             }
             with open(doc_cache, "w", encoding="utf-8") as f:
                 json.dump(cache_payload, f, indent=2)
@@ -173,7 +186,8 @@ async def extract_pdf_tables(req: ExtractRequest) -> Dict[str, Any]:
             "filename": os.path.basename(pdf_path),
             "elements": elements,
             "totalElements": len(elements),
-            "raw_items": raw_items
+            "raw_items": raw_items,
+            "page_titles": page_titles
         }
     except Exception as e:
         print(f"[PDF Router] Extraction error: {e}")

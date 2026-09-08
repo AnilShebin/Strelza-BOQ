@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { LoginForm } from "@/components/login-form"
 import { BoqPage } from "@/components/boq-page"
 import { Button } from "@/components/ui/button"
@@ -8,8 +8,76 @@ import { FlutedGlass } from "@paper-design/shaders-react"
 import { motion } from "motion/react"
 import { Moon, Sun } from "lucide-react"
 
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("ErrorBoundary caught an unhandled error:", error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 text-center select-none font-sans">
+          <div className="max-w-md w-full bg-card border border-border rounded-xl p-6 shadow-lg space-y-4">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-foreground">Something went wrong</h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              An unexpected render error occurred in the workspace. Your session is preserved.
+            </p>
+            {this.state.error?.message && (
+              <div className="text-left bg-muted/60 p-2.5 rounded text-[11px] font-mono text-muted-foreground break-all border border-border/50 max-h-28 overflow-y-auto">
+                {this.state.error.message}
+              </div>
+            )}
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <Button
+                size="sm"
+                onClick={() => this.setState({ hasError: false, error: null })}
+                className="text-xs bg-primary text-primary-foreground cursor-pointer"
+              >
+                Try Again
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.location.reload()}
+                className="text-xs cursor-pointer"
+              >
+                Reload Page
+              </Button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('strelza-auth-session') === 'active'
+    } catch {
+      return false
+    }
+  })
+
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('strelza-theme')
     if (saved === 'dark' || saved === 'light') return saved
@@ -29,18 +97,32 @@ export default function App() {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
   }
 
+  const handleLogin = () => {
+    try {
+      localStorage.setItem('strelza-auth-session', 'active')
+    } catch {}
+    setIsLoggedIn(true)
+  }
+
+  const handleLogout = () => {
+    try {
+      localStorage.removeItem('strelza-auth-session')
+    } catch {}
+    setIsLoggedIn(false)
+  }
+
   if (isLoggedIn) {
     return (
-      <>
-        <BoqPage onLogout={() => setIsLoggedIn(false)} />
-        <Toaster richColors position="top-right" closeButton />
-      </>
+      <ErrorBoundary>
+        <BoqPage onLogout={handleLogout} />
+        <Toaster richColors position="bottom-right" closeButton />
+      </ErrorBoundary>
     )
   }
 
   return (
     <>
-      <Toaster richColors position="top-right" closeButton />
+      <Toaster richColors position="bottom-right" closeButton />
       <div className="grid h-screen w-screen max-h-screen overflow-hidden lg:grid-cols-2 bg-background font-sans antialiased">
         
         {/* Left Side: Full-bleed Auth Form Area */}
@@ -78,7 +160,7 @@ export default function App() {
 
           {/* Center Form */}
           <div className="mx-auto w-full max-w-[420px] py-6">
-            <LoginForm onLogin={() => setIsLoggedIn(true)} />
+            <LoginForm onLogin={handleLogin} />
           </div>
 
           {/* Footer */}

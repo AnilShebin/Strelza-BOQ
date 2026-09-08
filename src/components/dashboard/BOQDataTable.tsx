@@ -58,6 +58,7 @@ import {
   ArrowDownIcon,
   CheckIcon,
   ExternalLinkIcon,
+  AlertTriangleIcon,
 } from "lucide-react"
 import { ItemProvenanceDrawer } from "./ItemProvenanceDrawer"
 
@@ -121,21 +122,107 @@ const getCategoryStyle = (typeStr: string) => {
   return "bg-muted/70 text-muted-foreground border-border/60"
 }
 
+const getColumnAlignment = (id: string) => {
+  switch (id) {
+    case "select":
+    case "unit":
+    case "quantity":
+      return "text-center"
+    case "rate":
+    case "total_cost":
+    case "actions":
+      return "text-right"
+    default:
+      return "text-left"
+  }
+}
+
+const getColumnClass = (id: string, viewMode: 'boq' | 'pricelist') => {
+  switch (id) {
+    case "select":
+      return "w-10 min-w-[40px] max-w-[40px] px-0 shrink-0"
+    case "code":
+      return viewMode === "pricelist" ? "w-28 min-w-[112px] shrink-0" : "w-24 min-w-[96px] shrink-0"
+    case "header":
+      return viewMode === "pricelist" ? "min-w-[320px]" : "min-w-[280px]"
+    case "unit":
+      return viewMode === "pricelist" ? "w-20 min-w-[80px] shrink-0" : "w-16 min-w-[64px] shrink-0"
+    case "rate":
+      return viewMode === "pricelist" ? "w-28 min-w-[112px] shrink-0" : "w-24 min-w-[96px] shrink-0"
+    case "quantity":
+      return "w-28 min-w-[112px] shrink-0"
+    case "total_cost":
+      return "w-28 min-w-[112px] shrink-0"
+    case "comments":
+      return "min-w-[260px] max-w-[380px] whitespace-normal"
+    case "actions":
+      return "w-28 min-w-[112px] pr-3 shrink-0"
+    default:
+      return ""
+  }
+}
+
+function CommentCellContent({ comment }: { comment: string }) {
+  const [expanded, setExpanded] = React.useState(false)
+  const trimmed = (comment || "").trim()
+  if (!trimmed) {
+    return <span className="text-muted-foreground/30 text-xs italic">-</span>
+  }
+  const isWarning = /verify|mismatch|discrepancy|check|not matching/i.test(trimmed)
+
+  if (isWarning) {
+    return (
+      <div className="w-full max-w-[360px] text-left py-0.5">
+        <div
+          onClick={() => setExpanded((prev) => !prev)}
+          title={`${trimmed}\n\n(Click to ${expanded ? "collapse" : "expand"})`}
+          className="flex items-start gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-[11px] leading-snug font-medium w-full max-w-full cursor-pointer transition-colors shadow-2xs group"
+        >
+          <AlertTriangleIcon className="size-3.5 shrink-0 text-amber-500 mt-0.5" />
+          <span className={`${expanded ? "whitespace-normal" : "line-clamp-2"} min-w-0 flex-1 break-words whitespace-normal`}>
+            {trimmed}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full max-w-[360px] text-left py-0.5" title={`${trimmed}\n\n(Click to ${expanded ? "collapse" : "expand"})`}>
+      <span
+        onClick={() => setExpanded((prev) => !prev)}
+        className={`text-xs text-muted-foreground ${expanded ? "whitespace-normal" : "line-clamp-2"} leading-snug break-words whitespace-normal block cursor-pointer hover:text-foreground transition-colors`}
+      >
+        {trimmed}
+      </span>
+    </div>
+  )
+}
+
 function TableRowItem({
   row,
+  viewMode,
 }: {
   row: Row<typeof features, BOQTableItem>
+  viewMode: 'boq' | 'pricelist'
 }) {
   return (
     <TableRow
       data-state={row.getIsSelected() && "selected"}
       className="relative z-0 hover:bg-muted/30 data-[state=selected]:bg-muted/50 transition-colors border-b border-border/70 group"
     >
-      {row.getVisibleCells().map((cell) => (
-        <TableCell key={cell.id} className="py-3 px-3 first:w-12 first:px-0 first:text-center align-middle">
-          <FlexRender cell={cell} />
-        </TableCell>
-      ))}
+      {row.getVisibleCells().map((cell) => {
+        const alignClass = getColumnAlignment(cell.column.id)
+        const colClass = getColumnClass(cell.column.id, viewMode)
+        return (
+          <TableCell
+            key={cell.id}
+            className={`py-3 px-3 align-middle ${alignClass} ${colClass}`}
+          >
+            <FlexRender cell={cell} />
+          </TableCell>
+        )
+      })}
     </TableRow>
   )
 }
@@ -209,6 +296,20 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
   const [isCustomCategory, setIsCustomCategory] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
 
+  // Dynamically compute skeleton rows to completely fill any screen height
+  const [skeletonCount, setSkeletonCount] = React.useState(22)
+
+  React.useEffect(() => {
+    const updateSkeletonCount = () => {
+      const availableHeight = typeof window !== 'undefined' ? window.innerHeight - 200 : 800
+      const calculatedRows = Math.max(16, Math.ceil(availableHeight / 42) + 2)
+      setSkeletonCount(calculatedRows)
+    }
+    updateSkeletonCount()
+    window.addEventListener('resize', updateSkeletonCount)
+    return () => window.removeEventListener('resize', updateSkeletonCount)
+  }, [])
+
   // Dynamically compute existing categories & units strictly from active Excel / database items (0 hardcoded lists)
   const existingCategories = React.useMemo(() => {
     const cats = new Set<string>()
@@ -266,11 +367,31 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
 
   const handleSaveDrawer = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
+    const trimmedCode = formCode.trim()
+    if (!trimmedCode) {
+      toast.error('SOR Code is required and cannot be empty')
+      return
+    }
     const trimmedName = formName.trim()
     if (!trimmedName) {
       toast.error('Item Description is required')
       return
     }
+    // Enforce unique SOR code
+    if (drawerMode === 'add') {
+      const codeExists = data.some((it) => it.code?.trim().toUpperCase() === trimmedCode.toUpperCase())
+      if (codeExists) {
+        toast.error(`SOR Code "${trimmedCode}" already exists. SOR Codes must be unique.`)
+        return
+      }
+    } else if (drawerItem) {
+      const codeExists = data.some((it) => it.id !== drawerItem.id && it.code?.trim().toUpperCase() === trimmedCode.toUpperCase())
+      if (codeExists) {
+        toast.error(`SOR Code "${trimmedCode}" already exists. SOR Codes must be unique.`)
+        return
+      }
+    }
+
     const rateNum = parseFloat(formRate)
     if (isNaN(rateNum) || rateNum < 0) {
       toast.error('Please enter a valid positive rate')
@@ -278,17 +399,16 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
     }
     const qtyNum = parseFloat(formQuantity) || 0
     const finalUnit = formUnit.trim() || 'each'
-    const finalCat = formCategory.trim() || 'General SOR Pricing Items'
 
     setSaving(true)
     try {
       if (drawerMode === 'add') {
         const payload = {
-          code: formCode.trim(),
+          code: trimmedCode,
           name: trimmedName,
           unit: finalUnit,
           rate: rateNum,
-          category: finalCat,
+          category: '',
         }
         const res = await fetch(`http://localhost:8000/api/price-list?price_list_id=${activePriceListId || 1}`, {
           method: 'POST',
@@ -299,8 +419,9 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
         toast.success('New catalog item created!')
         onReload?.()
       } else if (drawerItem) {
+        const finalCat = formCategory.trim()
         const payload = {
-          code: formCode.trim(),
+          code: trimmedCode,
           name: trimmedName,
           unit: finalUnit,
           rate: rateNum,
@@ -318,7 +439,7 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
             it.id === drawerItem.id
               ? {
                   ...it,
-                  code: formCode.trim(),
+                  code: trimmedCode,
                   name: trimmedName,
                   header: trimmedName,
                   unit: finalUnit,
@@ -465,16 +586,6 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
             </div>
           ),
         }),
-        columnHelper.accessor("type", {
-          header: () => <div className="w-36 text-center text-xs font-semibold text-muted-foreground">Category / Section</div>,
-          cell: ({ row }) => (
-            <div className="w-36 flex justify-center">
-              <span className={`px-2.5 py-0.5 text-[11px] font-medium rounded-full border truncate max-w-[140px] text-center transition-colors ${getCategoryStyle(row.original.type || '')}`}>
-                {row.original.type || ''}
-              </span>
-            </div>
-          ),
-        }),
         columnHelper.display({
           id: "actions",
           header: () => <div className="text-right text-xs font-semibold text-muted-foreground pr-2">Actions</div>,
@@ -605,11 +716,15 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
           )
         },
       }),
+      columnHelper.accessor("comments", {
+        header: () => <div className="text-left text-xs font-semibold text-muted-foreground">Comments</div>,
+        cell: ({ row }) => <CommentCellContent comment={row.original.comments || ""} />,
+      }),
       columnHelper.display({
         id: "actions",
-        header: () => <div className="text-right pr-2">Actions</div>,
+        header: () => <div className="text-right pr-2 text-xs font-semibold text-muted-foreground">Actions</div>,
         cell: ({ row }) => (
-          <div className="flex items-center justify-end gap-1 pr-2">
+          <div className="flex items-center justify-end gap-1 pr-1 shrink-0">
             <Button
               variant="ghost"
               size="icon"
@@ -757,14 +872,18 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort()
                   const isSorted = header.column.getIsSorted()
+                  const alignClass = getColumnAlignment(header.column.id)
+                  const colClass = getColumnClass(header.column.id, viewMode)
                   return (
                     <th
                       key={header.id}
-                      className="h-10 px-3 text-left align-middle font-semibold text-xs text-muted-foreground select-none whitespace-nowrap first:w-10 first:px-0 first:text-center"
+                      className={`h-10 px-3 align-middle font-semibold text-xs text-muted-foreground select-none whitespace-nowrap ${alignClass} ${colClass}`}
                     >
                       {header.isPlaceholder ? null : canSort ? (
                         <div
-                          className="flex items-center gap-1.5 cursor-pointer hover:text-foreground transition-colors group"
+                          className={`flex items-center gap-1.5 cursor-pointer hover:text-foreground transition-colors group ${
+                            alignClass === "text-right" ? "justify-end" : alignClass === "text-center" ? "justify-center" : "justify-start"
+                          }`}
                           onClick={header.column.getToggleSortingHandler()}
                         >
                           <FlexRender header={header} />
@@ -787,35 +906,83 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
           </thead>
           <TableBody>
             {loading || (data.length === 0 && initialData && initialData.length > 0) ? (
-              Array.from({ length: 8 }).map((_, index) => (
-                <TableRow key={`skeleton-${index}`} className="border-b border-border/50">
-                  {viewMode === 'pricelist' ? (
-                    <>
-                      <TableCell className="py-3 px-0 text-center"><Skeleton className="h-4 w-4 mx-auto rounded" /></TableCell>
-                      <TableCell className="py-3 px-3"><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell className="py-3 px-3"><Skeleton className="h-4 w-64" /></TableCell>
-                      <TableCell className="py-3 px-3 text-center"><Skeleton className="h-5 w-10 mx-auto rounded" /></TableCell>
-                      <TableCell className="py-3 px-3"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                      <TableCell className="py-3 px-3 text-center"><Skeleton className="h-5 w-24 mx-auto rounded-full" /></TableCell>
-                      <TableCell className="py-3 px-3 text-right"><Skeleton className="h-6 w-12 ml-auto rounded" /></TableCell>
-                    </>
-                  ) : (
-                    <>
-                      <TableCell className="py-3 px-0 text-center"><Skeleton className="h-4 w-4 mx-auto rounded" /></TableCell>
-                      <TableCell className="py-3 px-3"><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell className="py-3 px-3"><Skeleton className="h-4 w-64" /></TableCell>
-                      <TableCell className="py-3 px-3 text-center"><Skeleton className="h-5 w-10 mx-auto rounded" /></TableCell>
-                      <TableCell className="py-3 px-3"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                      <TableCell className="py-3 px-3 text-center"><Skeleton className="h-6 w-16 mx-auto rounded" /></TableCell>
-                      <TableCell className="py-3 px-3"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                      <TableCell className="py-3 px-3 text-right"><Skeleton className="h-6 w-12 ml-auto rounded" /></TableCell>
-                    </>
-                  )}
-                </TableRow>
-              ))
+              Array.from({ length: skeletonCount }).map((_, index) => {
+                const descWidths = ['w-[76%]', 'w-[62%]', 'w-[88%]', 'w-[54%]', 'w-[82%]', 'w-[70%]', 'w-[94%]', 'w-[65%]']
+                const descWidth = descWidths[index % descWidths.length]
+                const hasSubline = index % 3 === 1
+                return (
+                  <TableRow key={`skeleton-${index}`} className="border-b border-border/30 hover:bg-transparent">
+                    {viewMode === 'pricelist' ? (
+                      <>
+                        <TableCell className="py-2.5 px-0 text-center w-10 shrink-0">
+                          <Skeleton className="size-4 mx-auto rounded-[4px] border border-border/60" />
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 w-28 shrink-0">
+                          <Skeleton className="h-4.5 w-20 rounded-md bg-primary/10 border border-primary/20" />
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 min-w-[320px]">
+                          <div className="space-y-1.5 py-0.5">
+                            <Skeleton className={`h-4 rounded-md ${descWidth}`} />
+                            {hasSubline && <Skeleton className="h-3 w-1/3 rounded opacity-40" />}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 text-center w-20 shrink-0">
+                          <Skeleton className="h-5 w-11 mx-auto rounded-md border border-border/40" />
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 text-right w-28 shrink-0">
+                          <Skeleton className="h-4.5 w-16 ml-auto rounded-md" />
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 text-right w-24 shrink-0">
+                          <div className="flex items-center justify-end gap-1 pr-1">
+                            <Skeleton className="size-7 rounded-md border border-border/30" />
+                            <Skeleton className="size-7 rounded-md border border-border/30" />
+                          </div>
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell className="py-2.5 px-0 text-center w-10 shrink-0">
+                          <Skeleton className="size-4 mx-auto rounded-[4px] border border-border/60" />
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 w-24 shrink-0">
+                          <Skeleton className="h-4.5 w-20 rounded-md bg-primary/10 border border-primary/20" />
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 min-w-[280px]">
+                          <div className="space-y-1.5 py-0.5">
+                            <Skeleton className={`h-4 rounded-md ${descWidth}`} />
+                            {hasSubline && <Skeleton className="h-3 w-1/3 rounded opacity-40" />}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 text-center w-16 shrink-0">
+                          <Skeleton className="h-5 w-11 mx-auto rounded-md border border-border/40" />
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 text-right w-24 shrink-0">
+                          <Skeleton className="h-4.5 w-16 ml-auto rounded-md" />
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 text-center w-28 shrink-0">
+                          <Skeleton className="h-7 w-20 mx-auto rounded-lg border border-border/50" />
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 text-right w-28 shrink-0">
+                          <Skeleton className="h-4.5 w-20 ml-auto rounded-md font-mono" />
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 min-w-[260px] max-w-[380px]">
+                          <Skeleton className="h-4.5 w-28 rounded-md opacity-60" />
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 text-right w-28 shrink-0">
+                          <div className="flex items-center justify-end gap-1 pr-1">
+                            <Skeleton className="size-7 rounded-md border border-border/30" />
+                            <Skeleton className="size-7 rounded-md border border-border/30" />
+                            <Skeleton className="size-7 rounded-md border border-border/30" />
+                          </div>
+                        </TableCell>
+                      </>
+                    )}
+                  </TableRow>
+                )
+              })
             ) : table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRowItem key={row.id} row={row} />
+                <TableRowItem key={row.id} row={row} viewMode={viewMode} />
               ))
             ) : (
               <TableRow>
@@ -848,16 +1015,16 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
       <div className="p-3 px-4.5 border-t border-border/80 bg-muted/20 flex flex-col sm:flex-row items-center justify-between text-xs select-none shrink-0 gap-2">
         <div className="flex items-center gap-3 text-muted-foreground font-medium">
           <span className="px-2 py-0.5 rounded-md bg-muted/60 text-muted-foreground border border-border/50 text-[11px]">
-            {table.getSelectedRowModel().rows.length} of {table.getRowModel().rows.length} selected
+            {loading ? <Skeleton className="h-3 w-12 inline-block rounded" /> : `${table.getSelectedRowModel().rows.length} of ${table.getRowModel().rows.length} selected`}
           </span>
           <span>
             {viewMode === 'pricelist' ? (
               <>
-                Total Catalog Items: <strong className="text-foreground font-semibold">{stats.totalItems}</strong>
+                Total Catalog Items: {loading ? <Skeleton className="h-3.5 w-10 inline-block rounded ml-1.5 align-middle" /> : <strong className="text-foreground font-semibold">{stats.totalItems}</strong>}
               </>
             ) : (
               <>
-                Priced Takeoff: <strong className="text-foreground font-semibold">{stats.pricedCount}</strong> of {stats.totalItems} items
+                Priced Takeoff: {loading ? <Skeleton className="h-3.5 w-14 inline-block rounded ml-1.5 align-middle" /> : <strong className="text-foreground font-semibold">{stats.pricedCount}</strong>} of {loading ? '...' : stats.totalItems} items
               </>
             )}
           </span>
@@ -951,7 +1118,7 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className={viewMode === 'boq' ? "grid grid-cols-2 gap-3" : "flex flex-col gap-1.5"}>
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-semibold text-foreground">Unit</Label>
@@ -999,52 +1166,54 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
                   )}
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold text-foreground">Category / Section</Label>
-                    <button
-                      type="button"
-                      onClick={() => setIsCustomCategory(!isCustomCategory)}
-                      className="text-[10px] text-primary hover:underline cursor-pointer font-medium"
-                    >
-                      {isCustomCategory ? 'Select list' : '+ Custom'}
-                    </button>
-                  </div>
-                  {isCustomCategory || existingCategories.length === 0 ? (
-                    <Input
-                      type="text"
-                      value={formCategory}
-                      onChange={(e) => setFormCategory(e.target.value)}
-                      placeholder="Enter category name..."
-                      className="text-xs h-9"
-                    />
-                  ) : (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-9 text-xs w-full justify-between font-normal px-2.5 bg-background border-border hover:bg-muted cursor-pointer"
-                        >
-                          <span className="truncate">{formCategory || 'Select category...'}</span>
-                          <ChevronDownIcon className="size-3.5 text-muted-foreground shrink-0 opacity-70" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" side="bottom" sideOffset={4} className="w-72 max-h-56 overflow-y-auto text-xs p-1">
-                        {Array.from(new Set([...existingCategories, formCategory])).filter(Boolean).map((c) => (
-                          <DropdownMenuItem
-                            key={c}
-                            onClick={() => setFormCategory(c)}
-                            className="text-xs cursor-pointer justify-between py-1.5 px-2"
+                {viewMode === 'boq' && (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold text-foreground">Category / Section</Label>
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomCategory(!isCustomCategory)}
+                        className="text-[10px] text-primary hover:underline cursor-pointer font-medium"
+                      >
+                        {isCustomCategory ? 'Select list' : '+ Custom'}
+                      </button>
+                    </div>
+                    {isCustomCategory || existingCategories.length === 0 ? (
+                      <Input
+                        type="text"
+                        value={formCategory}
+                        onChange={(e) => setFormCategory(e.target.value)}
+                        placeholder="Enter category name..."
+                        className="text-xs h-9"
+                      />
+                    ) : (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-9 text-xs w-full justify-between font-normal px-2.5 bg-background border-border hover:bg-muted cursor-pointer"
                           >
-                            <span className="truncate">{c}</span>
-                            {formCategory === c && <CheckIcon className="size-3.5 text-primary shrink-0" />}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </div>
+                            <span className="truncate">{formCategory || 'Select category...'}</span>
+                            <ChevronDownIcon className="size-3.5 text-muted-foreground shrink-0 opacity-70" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" side="bottom" sideOffset={4} className="w-72 max-h-56 overflow-y-auto text-xs p-1">
+                          {Array.from(new Set([...existingCategories, formCategory])).filter(Boolean).map((c) => (
+                            <DropdownMenuItem
+                              key={c}
+                              onClick={() => setFormCategory(c)}
+                              className="text-xs cursor-pointer justify-between py-1.5 px-2"
+                            >
+                              <span className="truncate">{c}</span>
+                              {formCategory === c && <CheckIcon className="size-3.5 text-primary shrink-0" />}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                )}
               </div>
 
               {viewMode === 'boq' && (

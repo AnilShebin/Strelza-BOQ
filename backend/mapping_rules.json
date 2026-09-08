@@ -64,7 +64,8 @@
     ],
     "5G AAU": [
       "5G AAU",
-      "AAU"
+      "AAU",
+      "AIR"
     ],
     "REMOTE RADIO UNIT": [
       "RADIO",
@@ -84,7 +85,16 @@
       "FILTER",
       "COMBINER",
       "MHA",
-      "MHAS"
+      "MHAS",
+      "BANDSTOP"
+    ],
+    "GPS": [
+      "GPS",
+      "GNSS",
+      "GPS SYSTEM",
+      "GPS RECEIVER",
+      "GPS ANTENNA",
+      "GPS SPLITTER"
     ],
     "JUNCTION BOX": [
       "JUNCTION BOX",
