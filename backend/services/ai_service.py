@@ -264,6 +264,129 @@ def send_gemini_request(url: str, payload: Dict[str, Any], timeout: int = 30) ->
     if last_error:
         raise last_error
 
+def extract_canonical_scope_graph(
+    extracted_tables: List[Dict[str, Any]],
+    elements: List[Dict[str, Any]],
+    api_key: str
+) -> Dict[str, Any]:
+    """
+    Universal Scope Graph Extractor.
+    Extracts physical equipment facts, carrier feeds, site scopes, and unquoted items
+    from drawing tables and notes into a canonical scope graph without requiring SOR codes or prices.
+    """
+    model_name = "gemini-3.5-flash-lite"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+
+    formatted_tables = []
+    for t in extracted_tables:
+        if isinstance(t, dict):
+            formatted_tables.append({
+                "page": t.get("page", 1),
+                "table_title": t.get("table_title", "Table"),
+                "headers": t.get("headers", []),
+                "rows": t.get("rows", [])
+            })
+
+    formatted_notes = []
+    for el in elements:
+        if isinstance(el, dict) and el.get("type") == "unstructured":
+            formatted_notes.append({
+                "page": el.get("page", 1),
+                "title": el.get("title", "Callout/Note"),
+                "text": str(el.get("content", "")).strip()
+            })
+
+    extractor_prompt = """You are an expert telecommunications engineering drawing fact extractor.
+Analyze the provided For Construction (FC) drawing tables and drawing notes.
+Extract a standardized Scope Graph containing factual equipment, site scopes, and unquoted items.
+
+Return ONLY a valid JSON object with the following structure:
+{
+  "physical_equipment": [
+    {
+      "id": "A1",
+      "equipment_type": "PANEL_ANTENNA", // One of: PANEL_ANTENNA, 5G_AAU, RRU, TMD, BASEBAND, ROUTER, TRAY, RP6672, GPS_COMPONENT, FEEDER_CABLE, OTHER
+      "model": "KAELUS F6RHEU01 PANEL 2705 x 470 x 178 (mm)", // Verbatim model and specs from drawing table cell
+      "action": "INSTALL", // One of: INSTALL, REMOVE, RELOCATE, REUSE, EXISTING
+      "location": "TOWER", // TOWER (outdoor mast/mount) or SHELTER (indoor rack/room)
+      "carrier_lines": 6, // Number of carrier/frequency lines in the SECTOR NO. & TECHNOLOGY cell (for antennas)
+      "quantity": 1, // Authoritative table row quantity (if negative proposed e.g. -3, quantity = 3)
+      "sheet": "S3-3",
+      "table": "TELSTRA MOBILES ANTENNA CONFIGURATION TABLE",
+      "row": 1,
+      "page": 11
+    }
+  ],
+  "site_scopes": {
+    "proposed_4g_sectors": 3,
+    "proposed_5g_sectors": 3,
+    "reused_coaxial_cables": 12,
+    "reused_hybrid_cables": 3,
+    "feeder_pim_test_required": true,
+    "reused_feeder_models": ["RFS LCF78-50JA", "RFS LCF78-50J", "W&B HYBRID CABLE 7/8\\""]
+  },
+  "unquoted_items": [
+    {
+      "description": "Proposed steel pole P1, diameter 139.7mm, thickness 5.0mm, length 3216mm",
+      "quantity": 1,
+      "sheet": "T3-11",
+      "page": 14
+    }
+  ]
+}
+
+CRITICAL RULES FOR FACT EXTRACTION:
+1. TABLES TO SCAN:
+   - ANTENNA CONFIGURATION TABLE: Extract proposed and removed antennas and 5G AAUs.
+   - EQUIPMENT NOTES TABLE / EQUIPMENT SCHEDULE: Extract TMAs (e.g. KAELUS TWIN TMA), RRUs (e.g. RRUS 32 B3, B7), Baseband units (e.g. BB6630, DUW 30 01, R503), Routers (e.g. R6675, RP6672), and management trays.
+2. ANTENNAS: In the Antenna Configuration Table, distinguish passive PANEL_ANTENNA (e.g. Kaelus, Argus, Deltec) from active massive MIMO 5G_AAU (e.g. AIR 3258, AIR 6449).
+   - Count the exact number of frequency/carrier lines in the SECTOR NO. & TECHNOLOGY cell for each antenna (e.g. 6 lines for A1, 2 lines for A4).
+   - Note antennas marked (SPARE) where ACTION REQUIRED is REMOVE must be extracted with action = "REMOVE".
+3. EQUIPMENT NOTES ROWS WITH NEGATIVE PROPOSED:
+   - In Equipment Notes table with columns [EXISTING, PROPOSED, TOTAL]:
+     * Check EVERY row with a negative number in the PROPOSED column (e.g. -1, -2, -3, -6).
+     * Every single row with negative PROPOSED represents equipment being removed/recovered from site (including basebands, digital units, radios, amplifiers, and fibre management trays).
+     * Extract EVERY row with negative PROPOSED with action = "REMOVE" and quantity = abs(PROPOSED).
+     * NEVER use the EXISTING column quantity for removals. The removal quantity is STRICTLY the net reduction abs(PROPOSED). For example, if Existing is 2 and Proposed is -1, the removal quantity is 1.
+     * If PROPOSED is positive (e.g. 1 or 2), set action = "INSTALL" with quantity = PROPOSED.
+     * If equipment is designated to be relocated in notes/details (e.g. router and slideout fibre tray to be relocated), set action = "RELOCATE" with quantity = 1 each.
+4. TMAs / TMDs: Extract all tower-mounted amplifiers, filters, and combiners (e.g. KAELUS TWIN TMA) with their action.
+5. BASEBAND & RACKS: Extract Baseband units (BB6630, DUW 30 01, R503) and fibre management trays in shelter racks with equipment_type = "BASEBAND" (or "TRAY"). Note: R503 is a baseband unit. Set net removal quantity = abs(PROPOSED).
+6. ROUTERS & HARDWARE: Extract cell site routers (R6675, RP6672) and slideout trays with their designated actions (INSTALL, RELOCATE). Note both router relocation (1x R6675) and tray relocation (1x slideout fibre tray).
+7. FEEDER RUNS: Sum the existing retained coaxial feeder runs (e.g. LCF78) and existing hybrid trunk cables (e.g. W&B hybrid) where EXISTING > 0 and not removed. Check drawing notes to confirm if PIM testing is required.
+8. VERBATIM TEXT: Do not omit or change words from model names in the tables.
+"""
+
+    payload_text = f"""{extractor_prompt}
+
+=== STRUCTURED TABLES ===
+{json.dumps(formatted_tables, indent=2)}
+
+=== DRAWING NOTES & CALLOUTS ===
+{json.dumps(formatted_notes, indent=2)}
+
+Response format: Return ONLY the JSON object. Do not wrap in markdown or add explanations."""
+
+    payload = {
+        "contents": [{"parts": [{"text": payload_text}]}],
+        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.0}
+    }
+
+    try:
+        res = send_gemini_request(url, payload, timeout=60)
+        candidates = res.get("candidates", [])
+        if not candidates:
+            raise ValueError("No candidates returned from Gemini Universal Scope Extractor")
+        raw_json = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+        scope_graph = json.loads(raw_json)
+        if isinstance(scope_graph, dict) and "physical_equipment" in scope_graph:
+            print(f"[Universal Extractor] Extracted {len(scope_graph.get('physical_equipment', []))} equipment facts and site scopes.")
+            return scope_graph
+        raise ValueError("Invalid scope graph structure returned by Gemini")
+    except Exception as e:
+        print(f"[Universal Extractor] Failed: {e}")
+        return {}
+
 def run_gemini_boq_mapper_and_deduplicator(
     extracted_tables: List[Dict[str, Any]],
     elements: List[Dict[str, Any]],

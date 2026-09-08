@@ -74,7 +74,7 @@ def load_master_price_list(file_path: str = "", price_list_id: Optional[int] = N
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, code, name, unit, rate, quantity, category, action, comments, confidence_score, confidence_level, evidence_json, attributes_json, mapping_rule FROM price_items WHERE price_list_id = ? ORDER BY id",
+            "SELECT id, code, name, unit, rate, quantity, category, action, comments, confidence_score, confidence_level, evidence_json, attributes_json, mapping_rule, equipment_type, action_type, location_type, calc_rule, aggregation_rule, pricing_group FROM price_items WHERE price_list_id = ? ORDER BY id",
             (price_list_id,)
         )
         rows = cursor.fetchall()
@@ -107,6 +107,12 @@ def load_master_price_list(file_path: str = "", price_list_id: Optional[int] = N
                 "evidence_json": r["evidence_json"] if "evidence_json" in r.keys() else "",
                 "attributes_json": r["attributes_json"] if "attributes_json" in r.keys() else "",
                 "mapping_rule": r["mapping_rule"] if "mapping_rule" in r.keys() and r["mapping_rule"] else "",
+                "equipment_type": r["equipment_type"] if "equipment_type" in r.keys() and r["equipment_type"] else "",
+                "action_type": r["action_type"] if "action_type" in r.keys() and r["action_type"] else "",
+                "location_type": r["location_type"] if "location_type" in r.keys() and r["location_type"] else "",
+                "calc_rule": r["calc_rule"] if "calc_rule" in r.keys() and r["calc_rule"] else "",
+                "aggregation_rule": r["aggregation_rule"] if "aggregation_rule" in r.keys() and r["aggregation_rule"] else "SUM",
+                "pricing_group": r["pricing_group"] if "pricing_group" in r.keys() and r["pricing_group"] else "",
                 "cells": [
                     r["code"] or "",
                     r["name"] or "",

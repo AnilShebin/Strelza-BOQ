@@ -230,6 +230,20 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    for col_name, col_def in [
+        ("equipment_type", "TEXT DEFAULT ''"),
+        ("action_type", "TEXT DEFAULT ''"),
+        ("location_type", "TEXT DEFAULT ''"),
+        ("calc_rule", "TEXT DEFAULT ''"),
+        ("aggregation_rule", "TEXT DEFAULT 'SUM'"),
+        ("pricing_group", "TEXT DEFAULT ''")
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE price_items ADD COLUMN {col_name} {col_def}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS parser_configs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

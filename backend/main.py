@@ -506,13 +506,21 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         mapped_boq_items = []
         
-        # Step 1: Execute Direct AI Semantic Takeoff Mapping if API key is present
+        # Step 1: Execute Two-Stage Hybrid Engine (Universal Scope Graph + Deterministic Rule Engine)
         try:
             if api_key and (extracted_tables or elements):
-                print(f"[Generate BOQ] Running Gemini AI takeoff mapper...")
-                ai_items = run_gemini_boq_mapper_and_deduplicator(
-                    extracted_tables, elements, price_list, api_key
-                )
+                print(f"[Generate BOQ] Running Two-Stage Hybrid Takeoff Engine...")
+                from services.ai_service import extract_canonical_scope_graph
+                from services.rule_engine import evaluate_scope_graph
+                scope_graph = extract_canonical_scope_graph(extracted_tables, elements, api_key)
+                if scope_graph and scope_graph.get("physical_equipment"):
+                    ai_items = evaluate_scope_graph(scope_graph, price_list)
+                    print(f"[Generate BOQ] Hybrid Engine deterministically mapped {len(ai_items)} items.")
+                else:
+                    print(f"[Generate BOQ] Scope Graph empty; falling back to legacy mapper...")
+                    ai_items = run_gemini_boq_mapper_and_deduplicator(
+                        extracted_tables, elements, price_list, api_key
+                    )
                 if ai_items and isinstance(ai_items, list):
                     for idx, m_item in enumerate(ai_items):
                         rate = float(m_item.get("rate", 0.0))
@@ -737,7 +745,10 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
                         "evidences": []
                     }
                 # For site-wide consolidated items, avoid repeatedly adding site totals if mapped multiple times
-                if b_item.get("sor_code") in ["R12513", "W13375", "W12804", "W7520", "W13358", "W12252", "W7893", "R13701", "W13393", "W13700", "W13374", "W13400"]:
+                is_max_agg = (b_item.get("aggregation_rule") or "").upper() == "MAX" or b_item.get("sor_code") in [
+                    "R12513", "W13375", "W12804", "W7520", "W13358", "W12252", "W7893", "R13701", "W13393", "W13700", "W13374", "W13400"
+                ]
+                if is_max_agg:
                     db_row_updates[r_str]["qty"] = max(db_row_updates[r_str]["qty"], float(b_item.get("quantity", 0)))
                 else:
                     db_row_updates[r_str]["qty"] += float(b_item.get("quantity", 0))
