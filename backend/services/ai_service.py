@@ -335,26 +335,21 @@ Return ONLY a valid JSON object with the following structure:
   ]
 }
 
-CRITICAL RULES FOR FACT EXTRACTION:
-1. TABLES TO SCAN:
-   - ANTENNA CONFIGURATION TABLE: Extract proposed and removed antennas and 5G AAUs.
-   - EQUIPMENT NOTES TABLE / EQUIPMENT SCHEDULE: Extract TMAs (e.g. KAELUS TWIN TMA), RRUs (e.g. RRUS 32 B3, B7), Baseband units (e.g. BB6630, DUW 30 01, R503), Routers (e.g. R6675, RP6672), and management trays.
-2. ANTENNAS: In the Antenna Configuration Table, distinguish passive PANEL_ANTENNA (e.g. Kaelus, Argus, Deltec) from active massive MIMO 5G_AAU (e.g. AIR 3258, AIR 6449).
-   - Count the exact number of frequency/carrier lines in the SECTOR NO. & TECHNOLOGY cell for each antenna (e.g. 6 lines for A1, 2 lines for A4).
-   - Note antennas marked (SPARE) where ACTION REQUIRED is REMOVE must be extracted with action = "REMOVE".
-3. EQUIPMENT NOTES ROWS WITH NEGATIVE PROPOSED:
-   - In Equipment Notes table with columns [EXISTING, PROPOSED, TOTAL]:
-     * Check EVERY row with a negative number in the PROPOSED column (e.g. -1, -2, -3, -6).
-     * Every single row with negative PROPOSED represents equipment being removed/recovered from site (including basebands, digital units, radios, amplifiers, and fibre management trays).
-     * Extract EVERY row with negative PROPOSED with action = "REMOVE" and quantity = abs(PROPOSED).
-     * NEVER use the EXISTING column quantity for removals. The removal quantity is STRICTLY the net reduction abs(PROPOSED). For example, if Existing is 2 and Proposed is -1, the removal quantity is 1.
-     * If PROPOSED is positive (e.g. 1 or 2), set action = "INSTALL" with quantity = PROPOSED.
-     * If equipment is designated to be relocated in notes/details (e.g. router and slideout fibre tray to be relocated), set action = "RELOCATE" with quantity = 1 each.
-4. TMAs / TMDs: Extract all tower-mounted amplifiers, filters, and combiners (e.g. KAELUS TWIN TMA) with their action.
-5. BASEBAND & RACKS: Extract Baseband units (BB6630, DUW 30 01, R503) and fibre management trays in shelter racks with equipment_type = "BASEBAND" (or "TRAY"). Note: R503 is a baseband unit. Set net removal quantity = abs(PROPOSED).
-6. ROUTERS & HARDWARE: Extract cell site routers (R6675, RP6672) and slideout trays with their designated actions (INSTALL, RELOCATE). Note both router relocation (1x R6675) and tray relocation (1x slideout fibre tray).
-7. FEEDER RUNS: Sum the existing retained coaxial feeder runs (e.g. LCF78) and existing hybrid trunk cables (e.g. W&B hybrid) where EXISTING > 0 and not removed. Check drawing notes to confirm if PIM testing is required.
-8. VERBATIM TEXT: Do not omit or change words from model names in the tables.
+CRITICAL EXTRACTION DIRECTIVES:
+Rule 1 (Antenna Configuration):
+- Scope: Distinguish passive panel antennas from active massive-MIMO beamforming units.
+- Condition: Scan Antenna Configuration Table rows and extract carrier lines per sector cell.
+- Action: Set INSTALL for proposed, REMOVE for recoveries, and record exact row quantities.
+
+Rule 2 (Equipment Schedule & Recoveries):
+- Scope: Mast devices (radios, filters, amplifiers) and shelter hardware (basebands, routers, trays).
+- Condition: In equipment tables, negative proposed values represent net equipment to recover.
+- Action: If proposed < 0, set REMOVE with quantity = abs(proposed); if proposed > 0, set INSTALL.
+
+Rule 3 (Site Testing & Physical Unquoted Scopes):
+- Scope: Feeder cable runs (coaxial/hybrid) for testing and civil/structural/safety callouts.
+- Condition: Retained existing feeder runs > 0, or physical callouts not in standard schedules.
+- Action: Count retained feeder runs for site_scopes; add physical items to unquoted_items.
 """
 
     payload_text = f"""{extractor_prompt}

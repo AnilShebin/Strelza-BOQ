@@ -230,20 +230,6 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
-    for col_name, col_def in [
-        ("equipment_type", "TEXT DEFAULT ''"),
-        ("action_type", "TEXT DEFAULT ''"),
-        ("location_type", "TEXT DEFAULT ''"),
-        ("calc_rule", "TEXT DEFAULT ''"),
-        ("aggregation_rule", "TEXT DEFAULT 'SUM'"),
-        ("pricing_group", "TEXT DEFAULT ''")
-    ]:
-        try:
-            cursor.execute(f"ALTER TABLE price_items ADD COLUMN {col_name} {col_def}")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
-
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS parser_configs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1207,6 +1193,164 @@ Return ONLY a valid JSON array of mapped BOQ objects matching this schema:
         seed_default_price_registry(cursor)
         conn.commit()
 
+    # Migration 16: Sync structured mapping rules from rules_backup.json into price_items
+    try:
+        backup_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "rules_backup.json")
+        if not os.path.exists(backup_path):
+            backup_path = os.path.join(os.path.dirname(__file__), "rules_backup.json")
+        if os.path.exists(backup_path):
+            with open(backup_path, "r", encoding="utf-8") as bf:
+                bdata = json.load(bf)
+                item_list = bdata if isinstance(bdata, list) else bdata.get("item_rules", [])
+                for ir in item_list:
+                    b_code = str(ir.get("code") or ir.get("sor_code") or "").strip()
+                    b_rule = str(ir.get("mapping_rule") or "").strip()
+                    b_name = str(ir.get("name") or "").strip()
+                    b_unit = str(ir.get("unit") or "each").strip()
+                    b_rate = float(ir.get("rate") or 0.0)
+                    b_cat = str(ir.get("category") or "").strip()
+                    if b_code and b_rule:
+                        cursor.execute("SELECT id FROM price_items WHERE code = ?", (b_code,))
+                        row = cursor.fetchone()
+                        if row:
+                            cursor.execute("UPDATE price_items SET mapping_rule = ? WHERE code = ?", (b_rule, b_code))
+                        else:
+                            cursor.execute(
+                                "INSERT INTO price_items (price_list_id, code, name, unit, rate, category, mapping_rule) VALUES (1, ?, ?, ?, ?, ?, ?)",
+                                (b_code, b_name, b_unit, b_rate, b_cat, b_rule)
+                            )
+            conn.commit()
+    except Exception as e:
+        print(f"[DB Migration] Error syncing rules from rules_backup.json: {e}")
+
+    # Migration 17: Upgrade boq_mapping_engine and client_mapping_rules to Version 3 (Feeder Cable Architecture & Multiplicity)
+    cursor.execute("SELECT version FROM ai_prompts WHERE name = 'boq_mapping_engine'")
+    row = cursor.fetchone()
+    if row:
+        current_version = row["version"]
+        if current_version is None or current_version < 3:
+            v3_mapping_prompt = """You are a senior telecom Bill of Quantities (BOQ) estimator and universal pricing AI engine.
+Your task is to analyze all extracted drawing data (structured schedules, layout notes, revision clouds, elevation details, and equipment notes) and map every single active scope of work to the active Price Book Schedule of Rates (SOR).
+
+CRITICAL ARCHITECTURAL DIRECTIVES:
+
+1. ZERO-LOSS SCOPE GUARANTEE (FINANCIAL CRITICAL):
+   - Every active work scope, proposed equipment item, removal action, structural modification, civil fixing, testing requirement, or preliminary task extracted from the drawing MUST appear in the final BOQ output.
+   - If an active item/work scope MATCHES an item in the Price Book:
+     - Map to that Price Book item with its exact "row_idx", "sor_code", "rate", "unit", and compute "total_cost".
+   - If an active item/work scope DOES NOT exist in the Price Book (or is a custom civil/structural/non-SOR scope):
+     - DO NOT OMIT OR DISCARD IT!
+     - Set "row_idx": null, "sor_code": "UNQUOTED", "rate": 0.0, "total_cost": 0.0.
+     - Set "comment": "Estimator need to fill: <Detailed extracted scope, dimensions, hardware specs, and drawing sheet reference>".
+
+2. TABLE-FIRST PRIMARY AUTHORITY & CROSS-VERIFICATION:
+   - Structured Tables are the primary source of truth for equipment quantities and specifications.
+   - Antenna Configuration Tables take precedence for Antenna items (Panel Antennas, AAU, GPS antennas) and antenna removals.
+   - Equipment Notes tables take precedence for internal shelter hardware, racks, RRUs, TMAs, filters, DC power equipment, AND FEEDER/HYBRID CABLES.
+   - For every table item, cross-check with layout callouts and revision clouds:
+     - If table quantity and layout annotations MATCH: output table quantity with comment "".
+     - If table quantity and layout annotations DIFFER: output the TABLE quantity as authoritative count, and set comment: "Data not matching with antenna layout".
+
+3. 5-TIER SCOPE TAXONOMY:
+   Tier 1: RF & Antennas (4G Panels >1.5m, 5G AAUs <1.0m / active beamforming, 1st antenna per sector vs extra-over, general antenna removals).
+   Tier 2: Active Radios (RRU) & Tower Mounted Devices (TMA, Filters, Combiners, Diplexers, MHAs) for both install and removal.
+   Tier 3: Internal Shelter, Baseband & DC Power (Baseband units/RP6672, Cell Site Routers, Digital Units, internal filter recoveries, battery strings, rectifiers).
+   Tier 4: Feeders, Tails, Cabling & Commissioning Testing:
+     - Feeder Cable Installations: Inspect Equipment Notes / Cable Schedules / layout callouts for proposed RF coaxial feeder cables (½”, ⅞”, 1¼”, 1⅝”).
+       - Map proposed runs to single (x 1), pair (x 2), or three-pair (x 6) base SOR codes (W12814–W12825).
+       - If route length exceeds base threshold (50m for ½” & ⅞”, 100m for 1¼” & 1⅝”), map excess length to Extra Over per Lm items (W12826–W12829).
+     - Feeder PIM / Sweep testing (W13375) for reused existing feeders or proposed feeder lines.
+     - Commissioning testing (Blackbird / Call & Data Tests): 1st Carrier per sector (count = active sectors, W13374) + Subsequent Carriers (count = total active carriers minus 1st carriers, W13400).
+   Tier 5: Structural Mounts, Plinths, Civil & Preliminaries:
+     - New mounts, mount relocations, plinth removals/replacements, Hilti chemical anchors with embedment depth, EME chain barriers, roof handrails, tower inspections, FIM waste management, crane hire, traffic control.
+
+4. ACTION FILTERING:
+   - Active Actions to include: INSTALL, PROPOSED, NEW, TO BE INSTALLED, REMOVE, RECOVER, TO BE REMOVED, TO BE RECOVERED, TO BE REPLACED, TO BE RELOCATED, TO BE MODIFIED, TO BE MOVED.
+   - Non-Action: Items marked purely as EXISTING, REUSE, or SPARE / MADE SPARE with NO active work scope (PROPOSED: 0) must be skipped.
+   - If an item marked as SPARE explicitly has an active action (e.g. REMOVE SPARE ANTENNA), include and process it.
+
+5. OUTPUT STRUCTURE:
+Return ONLY a valid JSON array of mapped BOQ objects matching this schema:
+[
+  {
+    "equipment_type": "FEEDER_CABLE",
+    "model": "RFS LCF78-50JA (4 OFF)",
+    "action": "INSTALL",
+    "quantity": 2,
+    "source_sheet": "Sheet S0",
+    "clean_text": "Install proposed Telstra 7/8 inch feeder cables (4 runs = 2 pairs)",
+    "row_idx": 50,
+    "sor_code": "W12818",
+    "item_name": "Feeder – (15m – 50m) Structure - ⅞ “ Feeder Cable x 2 (one pair)",
+    "unit": "Each",
+    "rate": 0.0,
+    "total_cost": 0.0,
+    "comment": ""
+  }
+]"""
+            cursor.execute(
+                "UPDATE ai_prompts SET prompt = ?, version = 3 WHERE name = 'boq_mapping_engine'",
+                (v3_mapping_prompt,)
+            )
+            conn.commit()
+            print("[DB Migration] Upgraded 'boq_mapping_engine' prompt to version 3.")
+
+    cursor.execute("SELECT version FROM ai_prompts WHERE name = 'client_mapping_rules'")
+    row = cursor.fetchone()
+    if row:
+        current_version = row["version"]
+        if current_version is None or current_version < 3:
+            v3_client_rules = """[UNIVERSAL TELECOM CLIENT-SPECIFIC DOMAIN RULES]:
+1. ANTENNA TECHNOLOGY CLASSIFICATION:
+   - Primary 4G Panel Antenna: Length/height > 1.5m (1500mm), e.g. Kaelus F6RHEU01, Argus RVVPX series. First panel antenna per sector maps to primary antenna SOR (e.g. W7520).
+   - Extra-Over 4G Panel Antenna: Second or additional panel antenna on the same sector maps to Extra-Over SOR (e.g. W13360).
+   - 5G AAU (Active Antenna Unit) / Massive MIMO: Compact height < 1.0m (1000mm) or active beamforming (e.g. AIR3258, AIR6488, AAU series) maps to 5G AAU SOR (e.g. W13358).
+   - Antenna Removals: Map strictly by total quantity count to general antenna removal/recovery SOR (e.g. R12513), without differentiating technology.
+
+2. RADIOS (RRU) & TOWER MOUNTED DEVICES (TMD):
+   - RRU Installation: All remote radio units mounted on tower/mounts map to Remote Radio Unit SOR (e.g. W12252).
+   - RRU Removal: Map to RRU Removal SOR (e.g. R12513).
+   - Tower Filters / TMA / Combiners: Map to Tower Mounted Device SOR (e.g. W7893) for install, and removal SOR (e.g. R12513).
+
+3. INTERNAL SHELTER, BASEBAND & POWER:
+   - Baseband / Radio Processors: Proposed baseband units (e.g. RP6672, Baseband 6630/6648) map to Baseband Unit Installation SOR (e.g. W13393).
+   - Baseband Recovery: Recovered DUS, R503, or baseband units map to Baseband Recovery SOR (e.g. R13701).
+   - Cell Site Routers: Relocations or installs map to Router SOR (e.g. W13700).
+   - Internal Filters: Recovered internal filters/combiners map to internal filter recovery SOR (e.g. R13169).
+
+4. FEEDER CABLE INSTALLATION & EXTRA OVER:
+   - Diameter & Model Code Recognition:
+     - 1/2" (½”): Models starting with LCF12, LDF4, or containing 1/2". Base route: 15m–50m.
+     - 7/8" (⅞”): Models starting with LCF78, LDF5, or containing 7/8". Base route: 15m–50m.
+     - 1-1/4" (1¼”): Models starting with LCF114, LDF6, or containing 1-1/4" or 1¼". Base route: 20m–100m.
+     - 1-5/8" (1⅝”): Models starting with LCF158, LDF7, or containing 1-5/8" or 1⅝". Base route: 25m–100m.
+   - Proposed Cable Multiplicity Mapping:
+     - When proposed cable runs are specified (e.g. in Equipment Notes PROPOSED column > 0, or layout callouts like "PROPOSED RFS LCF78-50JA FEEDER CABLES (4 OFF)"):
+       - 6 runs -> Three pair (x 6): W12816 (½”), W12819 (⅞”), W12822 (1¼”), W12825 (1⅝”). Quantity = 1.
+       - 4 runs -> Two pairs (x 2): W12815 (½”), W12818 (⅞”), W12821 (1¼”), W12824 (1⅝”). Quantity = 2.
+       - 2 runs -> One pair (x 2): W12815 (½”), W12818 (⅞”), W12821 (1¼”), W12824 (1⅝”). Quantity = 1.
+       - 1 run -> Single (x 1): W12814 (½”), W12817 (⅞”), W12820 (1¼”), W12823 (1⅝”). Quantity = 1.
+       - Odd counts (e.g. 3 runs) -> 1 pair (x 2) + 1 single (x 1).
+   - Extra Over per Lineal Metre (W12826–W12829):
+     - If the drawing indicates a route length exceeding the base threshold (50m for ½” & ⅞”; 100m for 1¼” & 1⅝”), map the excess length (Length - Base) * (number of runs) to the matching Extra Over per Lm item.
+
+5. COMMISSIONING & TESTING:
+   - 4G/5G Testing (Blackbird / Call & Data Tests):
+     - First carrier per sector: Qty = total active sectors (e.g. W13374).
+     - Subsequent carriers per sector: Qty = sum of (carriers per sector - 1) across all sectors (e.g. W13400).
+   - PIM / Sweep Testing: Map to PIM testing SOR (e.g. W13375) when reusing existing feeder lines or installing new RF tails (Unit: each feeder line).
+
+6. STRUCTURAL, CIVIL & PRELIMINARIES:
+   - Tier 2 Tower Inspections: Auto-include standard tower inspection SOR (e.g. W13398) for macro build completion.
+   - Antenna Mounts, Plinths & Hilti Anchors: If new mounts, plinth replacements, or Hilti chemical anchors are specified in notes/clouds, map to matching SOR or emit as UNQUOTED with exact specs for estimator pricing.
+   - Site Safety & Preliminaries: EME chain barrier, roof handrail, crane hire, traffic control, and FIM waste management should be captured with full estimator notes."""
+            cursor.execute(
+                "UPDATE ai_prompts SET prompt = ?, version = 3 WHERE name = 'client_mapping_rules'",
+                (v3_client_rules,)
+            )
+            conn.commit()
+            print("[DB Migration] Upgraded 'client_mapping_rules' prompt to version 3.")
+
     # Check if empty, bootstrap from Excel if so
 
     cursor.execute("SELECT COUNT(*) as count FROM price_items")
@@ -1214,6 +1358,45 @@ Return ONLY a valid JSON array of mapped BOQ objects matching this schema:
     if count == 0:
         bootstrap_from_excel(conn, 1)
     conn.close()
+
+def sync_rules_to_price_items(price_list_id: int = 1) -> int:
+    """Synchronizes structured prompt rules and items from rules_backup.json into SQLite price_items."""
+    backup_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "rules_backup.json")
+    if not os.path.exists(backup_path):
+        backup_path = os.path.join(os.path.dirname(__file__), "rules_backup.json")
+    if not os.path.exists(backup_path):
+        return 0
+
+    count = 0
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        with open(backup_path, "r", encoding="utf-8") as bf:
+            bdata = json.load(bf)
+            item_list = bdata if isinstance(bdata, list) else bdata.get("item_rules", [])
+            for ir in item_list:
+                b_code = str(ir.get("code") or ir.get("sor_code") or "").strip()
+                b_rule = str(ir.get("mapping_rule") or "").strip()
+                b_name = str(ir.get("name") or "").strip()
+                b_unit = str(ir.get("unit") or "each").strip()
+                b_rate = float(ir.get("rate") or 0.0)
+                b_cat = str(ir.get("category") or "Feeder Cables").strip()
+                if b_code and b_rule:
+                    cursor.execute("SELECT id FROM price_items WHERE code = ?", (b_code,))
+                    row = cursor.fetchone()
+                    if row:
+                        cursor.execute("UPDATE price_items SET mapping_rule = ?, name = COALESCE(NULLIF(name, ''), ?), unit = COALESCE(NULLIF(unit, ''), ?) WHERE code = ?", (b_rule, b_name, b_unit, b_code))
+                    else:
+                        cursor.execute(
+                            "INSERT INTO price_items (price_list_id, code, name, unit, rate, category, mapping_rule) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (price_list_id, b_code, b_name, b_unit, b_rate, b_cat, b_rule)
+                        )
+                    count += 1
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[DB] Error in sync_rules_to_price_items: {e}")
+    return count
 
 def bootstrap_from_excel(conn, price_list_id=1):
     """Parses original master Excel workbook and populates the SQLite database."""

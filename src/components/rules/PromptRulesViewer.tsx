@@ -12,7 +12,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
-  ChevronDownIcon,
   SearchIcon,
   RotateCcwIcon,
   FileSpreadsheetIcon,
@@ -20,17 +19,11 @@ import {
   Trash2Icon,
   XIcon,
   SparklesIcon,
-  TagIcon,
   BookOpenIcon,
   CheckCircle2Icon,
   AlertCircleIcon,
   Loader2Icon,
-  HelpCircleIcon,
-  LayersIcon,
-  CalculatorIcon,
-  ActivityIcon,
-  MapPinIcon,
-  FilterIcon,
+  PlusIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -52,68 +45,16 @@ export interface PromptRuleItem {
 
 const API_BASE_URL = 'http://localhost:8000/api/rules';
 
-const CALC_RULES = [
-  { value: '', label: 'None / Prompt Only' },
-  { value: 'FIRST', label: 'FIRST (1st Unit Base Scope)' },
-  { value: 'EXTRA', label: 'EXTRA (Extra-Over Quantity: Total - 1)' },
-  { value: 'ALL', label: 'ALL (100% of Units Mapped)' },
-  { value: 'PER_SECTOR', label: 'PER_SECTOR (4G + 5G Proposed Sectors)' },
-  { value: 'EXTRA_CARRIER', label: 'EXTRA_CARRIER (Extra Carriers per Sector)' },
-  { value: 'REUSED_CABLES', label: 'REUSED_CABLES (Reused Coaxial + Hybrid Runs)' },
-  { value: 'SUM_TYPES', label: 'SUM_TYPES (Composite Multi-Equipment Sum)' },
-  { value: 'COMPOSITE_ONE', label: 'COMPOSITE_ONE (Kit Bundle = 1 Unit)' },
-];
-
-const EQUIPMENT_TYPES = [
-  { value: '', label: 'Not Specified' },
-  { value: 'PANEL_ANTENNA', label: 'PANEL_ANTENNA (4G/LTE Panel Antennas)' },
-  { value: '5G_AAU', label: '5G_AAU (Massive MIMO / AIR Antennas)' },
-  { value: 'RRU', label: 'RRU (Remote Radio Units / Radios)' },
-  { value: 'TMD', label: 'TMD (TMAs, Diplexers, Filters)' },
-  { value: 'BASEBAND_RACK', label: 'BASEBAND_RACK (BB6630, DUW, R503, Trays)' },
-  { value: 'ROUTER_TRAY', label: 'ROUTER_TRAY (Cell Site Routers & Trays)' },
-  { value: 'RP6672', label: 'RP6672 (Radio Processor)' },
-  { value: 'FEEDER_CABLE', label: 'FEEDER_CABLE (Coaxial Feeders & Hybrid Trunk)' },
-  { value: 'GPS', label: 'GPS (GPS Receiver, Antenna & Splitter)' },
-  { value: 'ANTENNA_TMD_RRU', label: 'ANTENNA_TMD_RRU (Tower Top Assets)' },
-  { value: 'BLACKBIRD_TEST', label: 'BLACKBIRD_TEST (Blackbird Call/Data Testing)' },
-  { value: 'OTHER', label: 'OTHER (General Hardware)' },
-];
-
-const ACTIONS = [
-  { value: '', label: 'Not Specified' },
-  { value: 'INSTALL', label: 'INSTALL (New Installation)' },
-  { value: 'REMOVE', label: 'REMOVE (Decommission & Recovery)' },
-  { value: 'RELOCATE', label: 'RELOCATE (Height / Rack Modification)' },
-  { value: 'REUSE_TEST', label: 'REUSE_TEST (Test Retained Equipment)' },
-  { value: 'TEST', label: 'TEST (Blackbird / Commissioning Test)' },
-];
-
-const LOCATIONS = [
-  { value: '', label: 'Any / Not Specified' },
-  { value: 'TOWER', label: 'TOWER (Outdoor Headframe / Mount)' },
-  { value: 'SHELTER', label: 'SHELTER (Indoor Equipment Rack)' },
-  { value: 'SITE', label: 'SITE (Site-Wide Scope)' },
-];
-
 export const PromptRulesViewer: React.FC = () => {
   const [items, setItems] = useState<PromptRuleItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'configured' | 'unconfigured'>('all');
-  const [calcFilter, setCalcFilter] = useState<string>('all');
-  const [eqTypeFilter, setEqTypeFilter] = useState<string>('all');
 
   // Modal / Editing state
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [activeItem, setActiveItem] = useState<PromptRuleItem | null>(null);
   const [ruleInput, setRuleInput] = useState<string>('');
-  const [eqTypeInput, setEqTypeInput] = useState<string>('');
-  const [actTypeInput, setActTypeInput] = useState<string>('');
-  const [locTypeInput, setLocTypeInput] = useState<string>('');
-  const [calcRuleInput, setCalcRuleInput] = useState<string>('');
-  const [aggRuleInput, setAggRuleInput] = useState<string>('SUM');
-  const [pricingGroupInput, setPricingGroupInput] = useState<string>('');
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Fetch rules from API
@@ -140,7 +81,7 @@ export const PromptRulesViewer: React.FC = () => {
 
   // Metrics counts
   const configuredCount = useMemo(() => {
-    return items.filter((i) => Boolean((i.mapping_rule && i.mapping_rule.trim()) || i.calc_rule)).length;
+    return items.filter((i) => Boolean(i.mapping_rule && i.mapping_rule.trim())).length;
   }, [items]);
 
   const unconfiguredCount = items.length - configuredCount;
@@ -148,36 +89,25 @@ export const PromptRulesViewer: React.FC = () => {
   // Filtered rows
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
-      const isConfigured = Boolean((item.mapping_rule && item.mapping_rule.trim()) || item.calc_rule);
+      const isConfigured = Boolean(item.mapping_rule && item.mapping_rule.trim());
       if (statusFilter === 'configured' && !isConfigured) return false;
       if (statusFilter === 'unconfigured' && isConfigured) return false;
-
-      if (calcFilter !== 'all' && (item.calc_rule || '') !== calcFilter) return false;
-      if (eqTypeFilter !== 'all' && (item.equipment_type || '') !== eqTypeFilter) return false;
 
       if (searchQuery.trim()) {
         const q = searchQuery.trim().toLowerCase();
         const inCode = item.code.toLowerCase().includes(q);
         const inName = item.name.toLowerCase().includes(q);
         const inRule = (item.mapping_rule || '').toLowerCase().includes(q);
-        const inCalc = (item.calc_rule || '').toLowerCase().includes(q);
-        const inEq = (item.equipment_type || '').toLowerCase().includes(q);
-        if (!inCode && !inName && !inRule && !inCalc && !inEq) return false;
+        if (!inCode && !inName && !inRule) return false;
       }
 
       return true;
     });
-  }, [items, statusFilter, calcFilter, eqTypeFilter, searchQuery]);
+  }, [items, statusFilter, searchQuery]);
 
   const handleOpenEdit = (item: PromptRuleItem) => {
     setActiveItem(item);
     setRuleInput(item.mapping_rule || '');
-    setEqTypeInput(item.equipment_type || '');
-    setActTypeInput(item.action_type || '');
-    setLocTypeInput(item.location_type || '');
-    setCalcRuleInput(item.calc_rule || '');
-    setAggRuleInput(item.aggregation_rule || 'SUM');
-    setPricingGroupInput(item.pricing_group || '');
     setIsModalOpen(true);
   };
 
@@ -187,12 +117,12 @@ export const PromptRulesViewer: React.FC = () => {
     try {
       const payload = {
         mapping_rule: ruleInput.trim(),
-        equipment_type: eqTypeInput,
-        action_type: actTypeInput,
-        location_type: locTypeInput,
-        calc_rule: calcRuleInput,
-        aggregation_rule: aggRuleInput,
-        pricing_group: pricingGroupInput.trim(),
+        equipment_type: '',
+        action_type: '',
+        location_type: '',
+        calc_rule: '',
+        aggregation_rule: 'SUM',
+        pricing_group: '',
       };
 
       const res = await fetch(`${API_BASE_URL}/${activeItem.row_idx}`, {
@@ -205,29 +135,28 @@ export const PromptRulesViewer: React.FC = () => {
         throw new Error(`Failed with status ${res.status}`);
       }
 
-      // Optimistically update local state
       setItems((prev) =>
         prev.map((i) =>
           i.row_idx === activeItem.row_idx
             ? {
                 ...i,
                 mapping_rule: ruleInput.trim(),
-                equipment_type: eqTypeInput,
-                action_type: actTypeInput,
-                location_type: locTypeInput,
-                calc_rule: calcRuleInput,
-                aggregation_rule: aggRuleInput,
-                pricing_group: pricingGroupInput.trim(),
+                equipment_type: '',
+                action_type: '',
+                location_type: '',
+                calc_rule: '',
+                aggregation_rule: 'SUM',
+                pricing_group: '',
               }
             : i
         )
       );
 
-      toast.success(`Updated configuration for ${activeItem.code || activeItem.name}`);
+      toast.success(`Updated prompt rule for ${activeItem.code || activeItem.name}`);
       setIsModalOpen(false);
     } catch (err: any) {
       console.error('Error saving rule:', err);
-      toast.error('Failed to update rule configuration');
+      toast.error('Failed to update prompt rule');
     } finally {
       setIsSaving(false);
     }
@@ -270,7 +199,7 @@ export const PromptRulesViewer: React.FC = () => {
         )
       );
 
-      toast.success(`Reset configuration for ${item.code || item.name}`);
+      toast.success(`Cleared prompt rule for ${item.code || item.name}`);
     } catch (err: any) {
       console.error('Error clearing rule:', err);
       toast.error('Failed to clear rule');
@@ -300,66 +229,25 @@ export const PromptRulesViewer: React.FC = () => {
       });
   };
 
-  // Helper colors for calculation rules
-  const getCalcRuleBadgeClass = (rule?: string) => {
-    switch (rule) {
-      case 'FIRST':
-        return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
-      case 'EXTRA':
-        return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
-      case 'ALL':
-        return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
-      case 'PER_SECTOR':
-        return 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20';
-      case 'EXTRA_CARRIER':
-        return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
-      case 'REUSED_CABLES':
-        return 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20';
-      case 'SUM_TYPES':
-        return 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20';
-      case 'COMPOSITE_ONE':
-        return 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20';
-      default:
-        return 'bg-muted text-muted-foreground border-border/60';
-    }
-  };
-
-  const getActionBadgeClass = (action?: string) => {
-    switch (action) {
-      case 'INSTALL':
-        return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20';
-      case 'REMOVE':
-        return 'bg-rose-500/10 text-rose-600 border-rose-500/20';
-      case 'RELOCATE':
-        return 'bg-amber-500/10 text-amber-600 border-amber-500/20';
-      case 'REUSE_TEST':
-        return 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20';
-      case 'TEST':
-        return 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20';
-      default:
-        return 'bg-muted text-muted-foreground border-border/50';
-    }
-  };
-
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-background">
       {/* Header Banner */}
-      <div className="border-b border-border/80 px-6 py-4 shrink-0 bg-card/60 backdrop-blur-sm">
+      <div className="border-b border-border/80 px-6 py-4 shrink-0 bg-card/60 backdrop-blur-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
               <div className="p-2 rounded-lg bg-primary/10 text-primary border border-primary/20">
-                <CalculatorIcon className="size-5" />
+                <SparklesIcon className="size-5" />
               </div>
               <div>
                 <h1 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
-                  SOR Rules & Calculation Engine
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                    Two-Stage Hybrid Engine v2
+                  SOR Engineering Prompt Rules
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    Pure RAG Standard
                   </span>
                 </h1>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Configure deterministic calculation rules and telecom classification attributes for master price items.
+                  Natural language 3-line engineering prompts guiding semantic RAG vector retrieval & AI takeoff mapping.
                 </p>
               </div>
             </div>
@@ -398,7 +286,7 @@ export const PromptRulesViewer: React.FC = () => {
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by code, description, type, or rule..."
+              placeholder="Search by code, item description, or prompt rule..."
               className="h-8 pl-8 text-xs bg-background shadow-2xs"
             />
             {searchQuery && (
@@ -413,20 +301,6 @@ export const PromptRulesViewer: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Calc Rule Filter */}
-            <select
-              value={calcFilter}
-              onChange={(e) => setCalcFilter(e.target.value)}
-              className="h-8 px-2.5 text-xs rounded-lg border border-border/80 bg-background text-foreground shadow-2xs focus:ring-1 focus:ring-primary cursor-pointer"
-            >
-              <option value="all">All Calculation Rules</option>
-              {CALC_RULES.filter((r) => r.value).map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.value}
-                </option>
-              ))}
-            </select>
-
             {/* Status Filter Segmented Toggle */}
             <div className="flex items-center gap-1 p-0.5 bg-background rounded-lg border border-border/70 shadow-2xs text-xs">
               <button
@@ -462,7 +336,7 @@ export const PromptRulesViewer: React.FC = () => {
                 }`}
               >
                 <AlertCircleIcon className="size-3 text-amber-500" />
-                Unconfigured ({unconfiguredCount})
+                Needs Prompt ({unconfiguredCount})
               </button>
             </div>
           </div>
@@ -476,23 +350,19 @@ export const PromptRulesViewer: React.FC = () => {
                 <tr className="text-[11px] font-semibold text-muted-foreground">
                   <th className="h-9 px-3 w-12 text-center select-none">#</th>
                   <th className="h-9 px-3 w-28 text-center select-none">SOR Code</th>
-                  <th className="h-9 px-4 min-w-[240px] select-none">Price Book Item Name</th>
+                  <th className="h-9 px-4 min-w-[260px] select-none">Price Book Item Name</th>
                   <th className="h-9 px-3 w-24 text-right select-none">Rate</th>
-                  <th className="h-9 px-3 w-32 text-center select-none">Calculation Rule</th>
-                  <th className="h-9 px-3 w-36 text-center select-none">Equipment / Action</th>
-                  <th className="h-9 px-4 min-w-[280px] select-none">Rule Notes / Scope</th>
+                  <th className="h-9 px-4 min-w-[420px] select-none">Engineering Prompt Rule (3-Line Standard)</th>
                   <th className="h-9 px-3 w-20 text-center select-none">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
-                {Array.from({ length: 18 }).map((_, idx) => (
-                  <tr key={`rules-skel-${idx}`} className="h-10">
+                {Array.from({ length: 16 }).map((_, idx) => (
+                  <tr key={`rules-skel-${idx}`} className="h-12">
                     <td className="px-3 text-center"><Skeleton className="size-3.5 mx-auto rounded" /></td>
                     <td className="px-3 text-center"><Skeleton className="h-4.5 w-18 mx-auto rounded bg-primary/10 border border-primary/20" /></td>
                     <td className="px-4"><Skeleton className="h-4 w-4/5 rounded" /></td>
                     <td className="px-3 text-right"><Skeleton className="h-4 w-14 ml-auto rounded" /></td>
-                    <td className="px-3 text-center"><Skeleton className="h-4 w-20 mx-auto rounded" /></td>
-                    <td className="px-3 text-center"><Skeleton className="h-4 w-24 mx-auto rounded" /></td>
                     <td className="px-4"><Skeleton className="h-4 w-11/12 rounded" /></td>
                     <td className="px-3 text-center"><Skeleton className="size-6 mx-auto rounded" /></td>
                   </tr>
@@ -504,19 +374,17 @@ export const PromptRulesViewer: React.FC = () => {
               <BookOpenIcon className="size-8 opacity-30" />
               <p className="text-xs font-semibold">No matching items found</p>
               <p className="text-[11px] text-muted-foreground/80 max-w-xs">
-                Try adjusting your search query or switching calculation filters.
+                Try adjusting your search query or switching status filters.
               </p>
-              {(searchQuery || statusFilter !== 'all' || calcFilter !== 'all') && (
+              {(searchQuery || statusFilter !== 'all') && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => {
                     setSearchQuery('');
                     setStatusFilter('all');
-                    setCalcFilter('all');
-                    setEqTypeFilter('all');
                   }}
-                  className="mt-1 h-7 text-xs"
+                  className="mt-1 h-7 text-xs cursor-pointer"
                 >
                   Reset Filters
                 </Button>
@@ -528,31 +396,28 @@ export const PromptRulesViewer: React.FC = () => {
                 <tr className="text-[11px] font-semibold text-muted-foreground">
                   <th className="h-9 px-3 w-12 text-center select-none">#</th>
                   <th className="h-9 px-3 w-28 text-center select-none">SOR Code</th>
-                  <th className="h-9 px-4 min-w-[240px] select-none">Price Book Item Name</th>
+                  <th className="h-9 px-4 min-w-[260px] select-none">Price Book Item Name</th>
                   <th className="h-9 px-3 w-24 text-right select-none">Rate</th>
-                  <th className="h-9 px-3 w-32 text-center select-none">Calculation Rule</th>
-                  <th className="h-9 px-3 w-36 text-center select-none">Equipment & Action</th>
-                  <th className="h-9 px-4 min-w-[280px] select-none">Rule Notes / Scope</th>
+                  <th className="h-9 px-4 min-w-[420px] select-none">Engineering Prompt Rule (3-Line Standard)</th>
                   <th className="h-9 px-3 w-20 text-center select-none">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
                 {filteredItems.map((item, idx) => {
-                  const hasCalcRule = Boolean(item.calc_rule && item.calc_rule.trim());
                   const hasPromptRule = Boolean(item.mapping_rule && item.mapping_rule.trim());
                   return (
                     <tr
                       key={item.id}
                       className={`transition-colors hover:bg-muted/30 ${
-                        hasCalcRule || hasPromptRule ? 'bg-background' : 'bg-muted/10'
+                        hasPromptRule ? 'bg-background' : 'bg-muted/10'
                       }`}
                     >
-                      <td className="py-2.5 px-3 text-center text-muted-foreground font-mono text-[11px]">
+                      <td className="py-3 px-3 text-center text-muted-foreground font-mono text-[11px]">
                         {idx + 1}
                       </td>
 
                       {/* Code */}
-                      <td className="py-2.5 px-3 text-center font-mono">
+                      <td className="py-3 px-3 text-center font-mono">
                         {item.code ? (
                           <span className="px-2 py-0.5 rounded font-semibold text-[11px] bg-primary/10 text-primary border border-primary/20 inline-block">
                             {item.code}
@@ -563,123 +428,73 @@ export const PromptRulesViewer: React.FC = () => {
                       </td>
 
                       {/* Item Name */}
-                      <td className="py-2.5 px-4 font-medium text-foreground">
-                        <div className="font-medium text-xs leading-snug">{item.name}</div>
-                        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
-                          {item.unit && <span>Unit: {item.unit}</span>}
-                          {item.aggregation_rule && (
-                            <span className="px-1.5 py-0.2 rounded font-mono bg-muted border border-border/60 text-[9.5px]">
-                              Agg: {item.aggregation_rule}
-                            </span>
-                          )}
-                          {item.pricing_group && (
-                            <span className="text-muted-foreground/75 truncate max-w-[140px]">
-                              Grp: {item.pricing_group}
+                      <td className="py-3 px-4 font-medium text-foreground">
+                        <div className="font-semibold text-xs leading-snug">{item.name}</div>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
+                          {item.unit && (
+                            <span className="px-1.5 py-0.5 rounded bg-muted/80 border border-border/60 font-mono">
+                              Unit: {item.unit}
                             </span>
                           )}
                         </div>
                       </td>
 
                       {/* Rate */}
-                      <td className="py-2.5 px-3 text-right font-mono font-medium text-foreground">
+                      <td className="py-3 px-3 text-right font-mono font-medium text-foreground">
                         ${item.rate.toFixed(2)}
                       </td>
 
-                      {/* Calculation Rule Badge */}
-                      <td className="py-2.5 px-3 text-center">
-                        {hasCalcRule ? (
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono font-semibold text-[10.5px] border ${getCalcRuleBadgeClass(
-                              item.calc_rule
-                            )}`}
-                          >
-                            <CalculatorIcon className="size-3 shrink-0" />
-                            {item.calc_rule}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-muted-foreground/60 italic font-mono">-</span>
-                        )}
-                      </td>
-
-                      {/* Equipment & Action */}
-                      <td className="py-2.5 px-3 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          {item.equipment_type ? (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-muted border border-border/70 text-foreground">
-                              {item.equipment_type}
-                            </span>
-                          ) : null}
-                          <div className="flex items-center gap-1">
-                            {item.action_type ? (
-                              <span
-                                className={`px-1.5 py-0.2 rounded text-[9.5px] font-semibold font-mono border ${getActionBadgeClass(
-                                  item.action_type
-                                )}`}
-                              >
-                                {item.action_type}
-                              </span>
-                            ) : null}
-                            {item.location_type ? (
-                              <span className="px-1.5 py-0.2 rounded text-[9.5px] font-mono bg-background border border-border/70 text-muted-foreground">
-                                {item.location_type}
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Rule Notes / Prompt */}
-                      <td className="py-2 px-4">
+                      {/* Prompt Rule */}
+                      <td className="py-2.5 px-4">
                         {hasPromptRule ? (
                           <div
                             onClick={() => handleOpenEdit(item)}
-                            className="group relative cursor-pointer p-2 rounded-lg border border-border/80 bg-muted/20 hover:bg-muted/40 transition-all text-foreground text-xs leading-relaxed"
-                            title="Click to edit configuration"
+                            className="group relative cursor-pointer p-3 rounded-lg border border-border/80 bg-muted/20 hover:bg-muted/40 transition-all text-foreground text-xs leading-relaxed"
+                            title="Click to edit 3-line prompt rule"
                           >
-                            <div className="flex items-start gap-1.5">
-                              <SparklesIcon className="size-3 text-primary shrink-0 mt-0.5" />
-                              <span className="flex-1 select-text text-[11px] line-clamp-2">{item.mapping_rule}</span>
-                              <PencilIcon className="size-3 opacity-0 group-hover:opacity-60 text-muted-foreground shrink-0 mt-0.5 transition-opacity" />
+                            <div className="flex items-start gap-2">
+                              <SparklesIcon className="size-3.5 text-primary shrink-0 mt-0.5" />
+                              <div className="flex-1 select-text text-xs whitespace-pre-line text-foreground/90 font-normal leading-relaxed">
+                                {item.mapping_rule}
+                              </div>
+                              <PencilIcon className="size-3.5 opacity-0 group-hover:opacity-70 text-muted-foreground shrink-0 mt-0.5 transition-opacity" />
                             </div>
                           </div>
                         ) : (
                           <button
                             type="button"
                             onClick={() => handleOpenEdit(item)}
-                            className="w-full text-left py-1.5 px-2.5 rounded-lg border border-dashed border-border/70 hover:border-primary/50 bg-muted/10 hover:bg-primary/5 text-muted-foreground hover:text-primary transition-all text-[11px] flex items-center gap-1.5 group cursor-pointer"
+                            className="w-full text-left py-2 px-3 rounded-lg border border-dashed border-border/80 hover:border-primary/50 bg-muted/10 hover:bg-primary/5 text-muted-foreground hover:text-primary transition-all text-xs flex items-center gap-2 group cursor-pointer"
                           >
-                            <span className="text-xs font-bold text-muted-foreground/60 group-hover:text-primary">+</span>
-                            <span className="italic opacity-80">Configure calculation rule...</span>
+                            <PlusIcon className="size-3.5 opacity-60 group-hover:opacity-100 group-hover:scale-110 transition-all" />
+                            <span>Add 3-line engineering prompt rule for AI takeoff...</span>
                           </button>
                         )}
                       </td>
 
                       {/* Actions */}
-                      <td className="py-2 px-3 text-center">
-                        <div className="flex items-center justify-center gap-0.5">
+                      <td className="py-3 px-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleOpenEdit(item)}
-                            title="Edit Rule Configuration"
-                            className="size-7 text-muted-foreground hover:text-primary rounded-md cursor-pointer"
+                            className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                            title="Edit Prompt Rule"
                           >
                             <PencilIcon className="size-3.5" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            disabled={!hasCalcRule && !hasPromptRule}
-                            onClick={() => handleClearRule(item)}
-                            title={hasCalcRule || hasPromptRule ? 'Clear Configuration' : 'No rule defined'}
-                            className={`size-7 rounded-md cursor-pointer ${
-                              hasCalcRule || hasPromptRule
-                                ? 'text-muted-foreground hover:text-destructive'
-                                : 'text-muted-foreground/30 cursor-not-allowed'
-                            }`}
-                          >
-                            <Trash2Icon className="size-3.5" />
-                          </Button>
+                          {hasPromptRule && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleClearRule(item)}
+                              className="size-7 text-muted-foreground hover:text-destructive cursor-pointer"
+                              title="Clear Prompt Rule"
+                            >
+                              <Trash2Icon className="size-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -691,181 +506,76 @@ export const PromptRulesViewer: React.FC = () => {
         </div>
       </div>
 
-      {/* Edit Rule Dialog */}
+      {/* Edit 3-Line Prompt Rule Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[620px] p-5">
-          <DialogHeader className="space-y-1">
+        <DialogContent className="max-w-2xl bg-card border-border shadow-2xl p-6">
+          <DialogHeader>
             <div className="flex items-center gap-2">
-              <CalculatorIcon className="size-4 text-primary" />
-              <DialogTitle className="text-base font-semibold">
-                Configure SOR Calculation & Attributes
+              <div className="p-1.5 rounded-md bg-primary/10 text-primary">
+                <SparklesIcon className="size-4" />
+              </div>
+              <DialogTitle className="text-base font-bold">
+                Edit 3-Line Engineering Prompt Rule
               </DialogTitle>
             </div>
             <DialogDescription className="text-xs text-muted-foreground">
-              Define deterministic calculation rules and equipment taxonomy for high-accuracy takeoff.
+              Define concise natural-language matching and quantity criteria. This is directly used by Gemini and RAG vector retrieval.
             </DialogDescription>
           </DialogHeader>
 
           {activeItem && (
-            <div className="space-y-3.5 py-1">
+            <div className="space-y-4 py-2">
               {/* Item Info Box */}
-              <div className="p-2.5 rounded-lg bg-muted/40 border border-border/70 space-y-1 text-xs">
+              <div className="p-3 rounded-lg bg-muted/40 border border-border/70 space-y-1.5 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono font-semibold text-primary px-1.5 py-0.5 bg-primary/10 rounded border border-primary/20 text-[11px]">
+                  <span className="font-mono font-bold text-primary px-2 py-0.5 bg-primary/10 rounded border border-primary/20 text-xs">
                     {activeItem.code || 'NO CODE'}
                   </span>
-                  <span className="text-muted-foreground text-[11px]">
-                    Rate: ${activeItem.rate.toFixed(2)}
+                  <span className="text-muted-foreground font-mono font-medium">
+                    Rate: ${activeItem.rate.toFixed(2)} / {activeItem.unit}
                   </span>
                 </div>
-                <div className="font-semibold text-foreground text-xs">{activeItem.name}</div>
-                <div className="text-muted-foreground text-[11px]">
-                  Unit: {activeItem.unit} | Rate: ${activeItem.rate.toFixed(2)}
-                </div>
+                <div className="font-semibold text-foreground text-sm">{activeItem.name}</div>
               </div>
 
-              {/* Structured Controls Grid */}
-              <div className="grid grid-cols-2 gap-3">
-                {/* Calculation Rule */}
-                <div className="space-y-1">
-                  <Label htmlFor="calc-rule" className="text-xs font-semibold text-foreground flex items-center gap-1">
-                    <CalculatorIcon className="size-3 text-primary" />
-                    Calculation Handler
+              {/* 3-Line Prompt Textarea */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="rule-prompt" className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <SparklesIcon className="size-3.5 text-primary" />
+                    3-Line Prompt Standard
                   </Label>
-                  <select
-                    id="calc-rule"
-                    value={calcRuleInput}
-                    onChange={(e) => setCalcRuleInput(e.target.value)}
-                    className="w-full text-xs p-2 rounded-lg border border-border/80 bg-background text-foreground focus:ring-1 focus:ring-primary cursor-pointer"
-                  >
-                    {CALC_RULES.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
+                  <span className="text-[11px] text-muted-foreground font-mono">
+                    {ruleInput.trim().split('\n').filter(Boolean).length} / 3 lines
+                  </span>
                 </div>
 
-                {/* Aggregation Rule */}
-                <div className="space-y-1">
-                  <Label htmlFor="agg-rule" className="text-xs font-semibold text-foreground flex items-center gap-1">
-                    <LayersIcon className="size-3 text-primary" />
-                    Site Aggregation
-                  </Label>
-                  <select
-                    id="agg-rule"
-                    value={aggRuleInput}
-                    onChange={(e) => setAggRuleInput(e.target.value)}
-                    className="w-full text-xs p-2 rounded-lg border border-border/80 bg-background text-foreground focus:ring-1 focus:ring-primary cursor-pointer"
-                  >
-                    <option value="MAX">MAX (Consolidated Whole-Site Scope)</option>
-                    <option value="SUM">SUM (Incremental Unit Summation)</option>
-                  </select>
-                </div>
-
-                {/* Equipment Type */}
-                <div className="space-y-1">
-                  <Label htmlFor="eq-type" className="text-xs font-semibold text-foreground flex items-center gap-1">
-                    <TagIcon className="size-3 text-primary" />
-                    Equipment Type
-                  </Label>
-                  <select
-                    id="eq-type"
-                    value={eqTypeInput}
-                    onChange={(e) => setEqTypeInput(e.target.value)}
-                    className="w-full text-xs p-2 rounded-lg border border-border/80 bg-background text-foreground focus:ring-1 focus:ring-primary cursor-pointer"
-                  >
-                    {EQUIPMENT_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Action Type */}
-                <div className="space-y-1">
-                  <Label htmlFor="act-type" className="text-xs font-semibold text-foreground flex items-center gap-1">
-                    <ActivityIcon className="size-3 text-primary" />
-                    Action Required
-                  </Label>
-                  <select
-                    id="act-type"
-                    value={actTypeInput}
-                    onChange={(e) => setActTypeInput(e.target.value)}
-                    className="w-full text-xs p-2 rounded-lg border border-border/80 bg-background text-foreground focus:ring-1 focus:ring-primary cursor-pointer"
-                  >
-                    {ACTIONS.map((a) => (
-                      <option key={a.value} value={a.value}>
-                        {a.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Location */}
-                <div className="space-y-1">
-                  <Label htmlFor="loc-type" className="text-xs font-semibold text-foreground flex items-center gap-1">
-                    <MapPinIcon className="size-3 text-primary" />
-                    Physical Location
-                  </Label>
-                  <select
-                    id="loc-type"
-                    value={locTypeInput}
-                    onChange={(e) => setLocTypeInput(e.target.value)}
-                    className="w-full text-xs p-2 rounded-lg border border-border/80 bg-background text-foreground focus:ring-1 focus:ring-primary cursor-pointer"
-                  >
-                    {LOCATIONS.map((l) => (
-                      <option key={l.value} value={l.value}>
-                        {l.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Pricing Group */}
-                <div className="space-y-1">
-                  <Label htmlFor="pricing-group" className="text-xs font-semibold text-foreground">
-                    Pricing Group / Family
-                  </Label>
-                  <Input
-                    id="pricing-group"
-                    value={pricingGroupInput}
-                    onChange={(e) => setPricingGroupInput(e.target.value)}
-                    placeholder="e.g. PANEL_ANTENNA_INSTALL"
-                    className="h-8 text-xs bg-background"
-                  />
-                </div>
-              </div>
-
-              {/* Optional Plain-English Notes */}
-              <div className="space-y-1.5 pt-1">
-                <Label htmlFor="rule-prompt" className="text-xs font-semibold text-foreground">
-                  Optional Prompt Notes / Special Instructions
-                </Label>
                 <textarea
                   id="rule-prompt"
-                  rows={3}
+                  rows={5}
                   value={ruleInput}
                   onChange={(e) => setRuleInput(e.target.value)}
-                  placeholder="Optional explanatory notes or specific table citation instructions."
-                  className="w-full text-xs p-2.5 rounded-lg border border-border/80 bg-background focus:outline-hidden focus:ring-1 focus:ring-primary leading-relaxed resize-y"
+                  placeholder={"Line 1: Match standard panel antenna installation scope\nLine 2: Covers antenna mount, tilt brackets, and feeder jumper connection\nLine 3: Quantity: 1 unit per antenna specified in drawing schedule"}
+                  className="w-full text-xs p-3 font-mono leading-relaxed rounded-lg border border-border/80 bg-background text-foreground focus:outline-hidden focus:ring-1 focus:ring-primary resize-y shadow-2xs"
                 />
-                <div className="flex justify-between items-center text-[10.5px] text-muted-foreground">
-                  <span>Deterministic calculation runs automatically via the selected Calculation Handler.</span>
-                  <span>{ruleInput.trim().length} chars</span>
+
+                <div className="p-2.5 rounded-lg bg-muted/30 border border-border/60 text-[11px] space-y-1 text-muted-foreground">
+                  <p className="font-semibold text-foreground/90">Standard Format Guidelines:</p>
+                  <p>• <strong>Line 1 (Trigger Scope):</strong> What equipment and actions in the drawing trigger this SOR item.</p>
+                  <p>• <strong>Line 2 (Inclusions/Exclusions):</strong> Brackets, cables, or scope boundaries included in the rate.</p>
+                  <p>• <strong>Line 3 (Quantity Rule):</strong> How to count units (e.g. 1 per site, 1 per sector, extra-over).</p>
                 </div>
               </div>
             </div>
           )}
 
-          <DialogFooter className="gap-2 sm:gap-0 pt-1">
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-border/60">
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={() => setIsModalOpen(false)}
-              className="text-xs h-8"
+              className="text-xs h-8.5 cursor-pointer"
             >
               Cancel
             </Button>
@@ -874,10 +584,10 @@ export const PromptRulesViewer: React.FC = () => {
               size="sm"
               onClick={handleSaveRule}
               disabled={isSaving}
-              className="text-xs h-8 gap-1.5"
+              className="text-xs h-8.5 gap-1.5 cursor-pointer shadow-2xs"
             >
               {isSaving ? <Loader2Icon className="size-3.5 animate-spin" /> : <SparklesIcon className="size-3.5" />}
-              Save Configuration
+              Save Prompt Rule
             </Button>
           </DialogFooter>
         </DialogContent>

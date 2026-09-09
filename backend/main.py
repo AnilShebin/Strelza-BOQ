@@ -70,6 +70,11 @@ from services.db import init_db, get_default_price_list_id
 @app.on_event("startup")
 def on_startup():
     init_db()
+    try:
+        from services.db import sync_rules_to_price_items
+        sync_rules_to_price_items(1)
+    except Exception as e:
+        print(f"[Startup] Error syncing rules: {e}")
 
 @app.get("/")
 def read_root() -> Dict[str, str]:
@@ -364,6 +369,38 @@ async def reextract_page_data(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to re-extract page details: {str(e)}")
 
 
+@app.post("/api/feedback/log")
+async def log_estimator_feedback(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Logs human estimator feedback (confirmations or code overrides) from the UI drawer.
+    Persists correction records and updates the vector precedent store for real-time AI learning.
+    """
+    try:
+        takeoff_item = payload.get("takeoff_item") or {}
+        system_decision = payload.get("system_decision") or {}
+        corrected_code = payload.get("corrected_code") or ""
+        correction_reason = payload.get("correction_reason") or ""
+        corrected_by = payload.get("corrected_by") or "Estimator"
+
+        if not corrected_code:
+            raise HTTPException(status_code=400, detail="corrected_code parameter is required")
+
+        from services.feedback_service import log_human_feedback
+        record = log_human_feedback(
+            takeoff_item=takeoff_item,
+            system_decision=system_decision,
+            corrected_code=corrected_code,
+            correction_reason=correction_reason,
+            corrected_by=corrected_by
+        )
+        return {
+            "status": "success",
+            "message": f"Feedback logged successfully for item '{record['takeoff_item']['raw_description']}' -> Code '{corrected_code}'",
+            "record": record
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to log estimator feedback: {str(e)}")
+
 @app.post("/api/generate-boq")
 @app.post("/api/generate-boq-deduplicated")
 async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -496,31 +533,31 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not api_key:
             raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured in environment.")
 
-        # Load Price list
+        # Load Price list and ensure prompt rules from rules_backup.json are synchronized
         price_list_id = payload.get("price_list_id")
         file_path = get_price_list_path(price_list_id)
         
+        try:
+            from services.db import sync_rules_to_price_items
+            sync_rules_to_price_items(price_list_id or 1)
+        except Exception as e:
+            print(f"[Generate BOQ] Notice: Failed to sync rules backup to DB: {e}")
+
         price_list = []
         if os.path.exists(file_path):
             price_list = load_master_price_list(file_path, price_list_id)
 
         mapped_boq_items = []
         
-        # Step 1: Execute Two-Stage Hybrid Engine (Universal Scope Graph + Deterministic Rule Engine)
+        # Step 1: Execute Pure RAG Takeoff Engine (Universal Drawing Schedules & 3-Line Prompt Rules)
         try:
             if api_key and (extracted_tables or elements):
-                print(f"[Generate BOQ] Running Two-Stage Hybrid Takeoff Engine...")
-                from services.ai_service import extract_canonical_scope_graph
-                from services.rule_engine import evaluate_scope_graph
-                scope_graph = extract_canonical_scope_graph(extracted_tables, elements, api_key)
-                if scope_graph and scope_graph.get("physical_equipment"):
-                    ai_items = evaluate_scope_graph(scope_graph, price_list)
-                    print(f"[Generate BOQ] Hybrid Engine deterministically mapped {len(ai_items)} items.")
-                else:
-                    print(f"[Generate BOQ] Scope Graph empty; falling back to legacy mapper...")
-                    ai_items = run_gemini_boq_mapper_and_deduplicator(
-                        extracted_tables, elements, price_list, api_key
-                    )
+                print(f"[Generate BOQ] Running Pure RAG Takeoff Engine with Gemini...")
+                from services.ai_service import run_gemini_boq_mapper_and_deduplicator
+                ai_items = run_gemini_boq_mapper_and_deduplicator(
+                    extracted_tables, elements, price_list, api_key
+                )
+                print(f"[Generate BOQ] Pure RAG Engine mapped {len(ai_items) if isinstance(ai_items, list) else 0} items.")
                 if ai_items and isinstance(ai_items, list):
                     for idx, m_item in enumerate(ai_items):
                         rate = float(m_item.get("rate", 0.0))
@@ -575,34 +612,70 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
             candidate_items = []
             for t in extracted_tables:
                 rows = t.get('rows', [])
+                headers = [str(h).upper().strip() for h in t.get('headers', [])]
                 sheet = t.get('sheet_name') or f"Page {t.get('page', 1)}"
+                
+                # Check column indices for equipment notes: ["ITEM", "EQUIPMENT", "EQUIPMENT DETAILS", "EXISTING", "PROPOSED", "TOTAL", "REFERENCE DWG"]
+                prop_col_idx = -1
+                exist_col_idx = -1
+                equip_col_idx = 1
+                for h_idx, h_name in enumerate(headers):
+                    if "PROPOSE" in h_name or "NEW" in h_name:
+                        prop_col_idx = h_idx
+                    elif "EXIST" in h_name:
+                        exist_col_idx = h_idx
+                    elif "EQUIP" in h_name or "DESCRIPTION" in h_name or "TYPE" in h_name:
+                        equip_col_idx = h_idx
+
                 for r_idx, row in enumerate(rows):
                     if not row or not isinstance(row, list) or len(row) < 2:
                         continue
-                    model_str = str(row[1] if len(row) > 1 else row[0]).strip()
+                    model_str = str(row[equip_col_idx] if len(row) > equip_col_idx else (row[1] if len(row) > 1 else row[0])).strip()
                     if not model_str or model_str in ['-', 'N/A', 'NONE']:
                         continue
-                    act = "INSTALL"
-                    qty = 1.0
-                    for cell in row:
-                        c_str = str(cell).upper().strip()
-                        if "REMOVE" in c_str or "RECOVER" in c_str:
-                            act = "REMOVE"
-                        elif "RELOCATE" in c_str:
-                            act = "RELOCATE"
-                        elif "EXIST" in c_str:
-                            act = "EXISTING"
+                    
+                    # If this table has an explicit PROPOSED column
+                    if prop_col_idx != -1 and len(row) > prop_col_idx:
+                        prop_val_str = str(row[prop_col_idx]).strip()
                         try:
-                            f_val = float(c_str)
-                            if 0 < f_val < 100:
-                                qty = f_val
+                            prop_num = float(prop_val_str)
                         except ValueError:
-                            pass
-                    if act == "EXISTING":
-                        continue
+                            # Handle things like "-3", "3 (SPARE)"
+                            import re as regex_lib
+                            match_digits = regex_lib.findall(r'-?\d+(?:\.\d+)?', prop_val_str)
+                            prop_num = float(match_digits[0]) if match_digits else 0.0
+
+                        if prop_num < 0:
+                            act = "REMOVE"
+                            qty = abs(prop_num)
+                        elif prop_num > 0:
+                            act = "INSTALL"
+                            qty = prop_num
+                        else:
+                            continue  # PROPOSED is 0, skip
+                    else:
+                        act = "INSTALL"
+                        qty = 1.0
+                        for cell in row:
+                            c_str = str(cell).upper().strip()
+                            if "REMOVE" in c_str or "RECOVER" in c_str:
+                                act = "REMOVE"
+                            elif "RELOCATE" in c_str:
+                                act = "RELOCATE"
+                            elif "EXIST" in c_str:
+                                act = "EXISTING"
+                            try:
+                                f_val = float(c_str)
+                                if 0 < f_val < 100:
+                                    qty = f_val
+                            except ValueError:
+                                pass
+                        if act == "EXISTING":
+                            continue
+
                     candidate_items.append({
                         "model": model_str,
-                        "equipment_type": "EQUIPMENT",
+                        "equipment_type": "FEEDER_CABLE" if any(f_kw in model_str.upper() for f_kw in ["LCF", "LDF", "FEEDER"]) else "EQUIPMENT",
                         "action": act,
                         "quantity": qty,
                         "source_sheet": sheet,
@@ -839,6 +912,13 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
         # Generate the Excel BOQ workbook in-place
         generate_populated_boq_excel(file_path, {}, file_path)
             
+        table_a_sor = [b for b in mapped_boq_items if b.get("sor_code") != "UNQUOTED"]
+        table_b_unpriced = [b for b in mapped_boq_items if b.get("sor_code") == "UNQUOTED"]
+        sor_subtotal = sum(float(b.get("total_cost", 0.0)) for b in table_a_sor)
+
+        from services.rule_engine import reconcile_master_audit_ledger
+        audit_ledger = reconcile_master_audit_ledger(scope_graph if 'scope_graph' in locals() and scope_graph else {}, mapped_boq_items)
+
         return {
             "status": "success",
             "drawing_name": os.path.basename(pdf_path),
@@ -847,6 +927,10 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
             "elements": elements,
             "extracted_tables": extracted_tables,
             "mapped_items": mapped_boq_items,
+            "contract_sor_boq": table_a_sor,
+            "unpriced_drawing_scopes": table_b_unpriced,
+            "audit_ledger": audit_ledger,
+            "sor_subtotal": sor_subtotal,
             "checklist": validation_results
         }
     except HTTPException:
@@ -959,12 +1043,6 @@ class ExportPayload(BaseModel):
 
 class RuleUpdateModel(BaseModel):
     mapping_rule: Optional[str] = ""
-    equipment_type: Optional[str] = None
-    action_type: Optional[str] = None
-    location_type: Optional[str] = None
-    calc_rule: Optional[str] = None
-    aggregation_rule: Optional[str] = None
-    pricing_group: Optional[str] = None
 
 class BatchRuleUpdateModel(BaseModel):
     rules: List[Dict[str, Any]]
@@ -975,16 +1053,47 @@ def get_prompt_rules(
     search: Optional[str] = None,
     status: Optional[str] = "all"
 ) -> Dict[str, Any]:
-    """Retrieves all price items with their plain-English prompt mapping rules and structured calculation metadata."""
+    """Retrieves all price items with their 3-line engineering prompt rules."""
     from services.db import get_db_connection, get_default_price_list_id
     if price_list_id is None:
         price_list_id = get_default_price_list_id()
 
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    # Sync clean structured prompt rules from rules_backup.json if needed
+    backup_path = os.path.join(os.path.dirname(__file__), "rules_backup.json")
+    if os.path.exists(backup_path):
+        try:
+            with open(backup_path, "r", encoding="utf-8") as bf:
+                bdata = json.load(bf)
+                item_list = bdata if isinstance(bdata, list) else bdata.get("item_rules", [])
+                for ir in item_list:
+                    b_code = str(ir.get("code") or ir.get("sor_code") or "").strip()
+                    b_rule = str(ir.get("mapping_rule") or "").strip()
+                    b_name = str(ir.get("name") or "").strip()
+                    b_unit = str(ir.get("unit") or "each").strip()
+                    b_rate = float(ir.get("rate") or 0.0)
+                    b_cat = str(ir.get("category") or "Feeder Cables").strip()
+                    if b_code and b_rule:
+                        cursor.execute("SELECT id FROM price_items WHERE code = ?", (b_code,))
+                        existing = cursor.fetchone()
+                        if existing:
+                            cursor.execute(
+                                "UPDATE price_items SET mapping_rule = ? WHERE code = ? AND (mapping_rule IS NULL OR mapping_rule LIKE '[SCOPE & RATE ITEM]%' OR mapping_rule != ?)",
+                                (b_rule, b_code, b_rule)
+                            )
+                        else:
+                            cursor.execute(
+                                "INSERT INTO price_items (price_list_id, code, name, unit, rate, category, mapping_rule) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                (price_list_id, b_code, b_name, b_unit, b_rate, b_cat, b_rule)
+                            )
+            conn.commit()
+        except Exception:
+            pass
+
     cursor.execute("""
-        SELECT id, code, name, unit, rate, mapping_rule,
-               equipment_type, action_type, location_type, calc_rule, aggregation_rule, pricing_group
+        SELECT id, code, name, unit, rate, mapping_rule
         FROM price_items 
         WHERE price_list_id = ? 
         ORDER BY id ASC
@@ -997,9 +1106,7 @@ def get_prompt_rules(
     
     for r in rows:
         rule_str = r["mapping_rule"] or ""
-        calc_rule = r["calc_rule"] or ""
-        eq_type = r["equipment_type"] or ""
-        is_configured = bool(rule_str.strip() or calc_rule.strip())
+        is_configured = bool(rule_str.strip())
         if is_configured:
             configured_count += 1
             
@@ -1012,7 +1119,7 @@ def get_prompt_rules(
             s = search.strip().lower()
             code_match = s in (r["code"] or "").lower()
             name_match = s in (r["name"] or "").lower()
-            rule_match = s in rule_str.lower() or s in calc_rule.lower() or s in eq_type.lower()
+            rule_match = s in rule_str.lower()
             if not (code_match or name_match or rule_match):
                 continue
                 
@@ -1024,12 +1131,6 @@ def get_prompt_rules(
             "unit": r["unit"] or "each",
             "rate": float(r["rate"] or 0.0),
             "mapping_rule": rule_str,
-            "equipment_type": r["equipment_type"] or "",
-            "action_type": r["action_type"] or "",
-            "location_type": r["location_type"] or "",
-            "calc_rule": r["calc_rule"] or "",
-            "aggregation_rule": r["aggregation_rule"] or "SUM",
-            "pricing_group": r["pricing_group"] or ""
         })
 
     return {
@@ -1043,30 +1144,18 @@ def get_prompt_rules(
 
 @app.put("/api/rules/{row_idx}")
 def update_item_rule(row_idx: int, payload: RuleUpdateModel) -> Dict[str, Any]:
-    """Updates the mapping rule and structured calculation metadata for a specific price item."""
+    """Updates the 3-line engineering prompt rule for a specific price item."""
     from services.excel_service import update_price_item_rule
     success = update_price_item_rule(
         row_idx,
-        payload.mapping_rule or "",
-        payload.equipment_type,
-        payload.action_type,
-        payload.location_type,
-        payload.calc_rule,
-        payload.aggregation_rule,
-        payload.pricing_group
+        payload.mapping_rule or ""
     )
     if not success:
         raise HTTPException(status_code=500, detail=f"Failed to update rule for item {row_idx}")
     return {
         "status": "success",
         "row_idx": row_idx,
-        "mapping_rule": (payload.mapping_rule or "").strip(),
-        "equipment_type": payload.equipment_type,
-        "action_type": payload.action_type,
-        "location_type": payload.location_type,
-        "calc_rule": payload.calc_rule,
-        "aggregation_rule": payload.aggregation_rule,
-        "pricing_group": payload.pricing_group
+        "mapping_rule": (payload.mapping_rule or "").strip()
     }
 
 @app.delete("/api/rules/{row_idx}")

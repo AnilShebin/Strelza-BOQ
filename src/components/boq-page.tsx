@@ -329,6 +329,7 @@ export function BoqPage({ onLogout }: { onLogout?: () => void }) {
       }
 
       const data = await res.json();
+      setAnalyzedData(data);
       const count = data.consolidated_count || (data.mapped_items || []).length || 0;
       toast.success(`BOQ Generated Successfully! ${count} items mapped and priced.`, { id: toastId });
 

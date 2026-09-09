@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner"
 import { z } from "zod"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -41,6 +42,9 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  Table,
+  TableHeader,
+  TableHead,
   TableBody,
   TableCell,
   TableRow,
@@ -57,6 +61,7 @@ import {
   ArrowUpIcon,
   ArrowDownIcon,
   CheckIcon,
+  CheckCircle2Icon,
   ExternalLinkIcon,
   AlertTriangleIcon,
 } from "lucide-react"
@@ -125,7 +130,6 @@ const getCategoryStyle = (typeStr: string) => {
 const getColumnAlignment = (id: string) => {
   switch (id) {
     case "select":
-    case "unit":
     case "quantity":
       return "text-center"
     case "rate":
@@ -140,23 +144,21 @@ const getColumnAlignment = (id: string) => {
 const getColumnClass = (id: string, viewMode: 'boq' | 'pricelist') => {
   switch (id) {
     case "select":
-      return "w-10 min-w-[40px] max-w-[40px] px-0 shrink-0"
+      return "w-9 min-w-[36px] max-w-[36px] px-0 shrink-0"
     case "code":
-      return viewMode === "pricelist" ? "w-28 min-w-[112px] shrink-0" : "w-24 min-w-[96px] shrink-0"
+      return "w-20 min-w-[80px] shrink-0"
     case "header":
-      return viewMode === "pricelist" ? "min-w-[320px]" : "min-w-[280px]"
-    case "unit":
-      return viewMode === "pricelist" ? "w-20 min-w-[80px] shrink-0" : "w-16 min-w-[64px] shrink-0"
+      return "min-w-[200px]"
     case "rate":
-      return viewMode === "pricelist" ? "w-28 min-w-[112px] shrink-0" : "w-24 min-w-[96px] shrink-0"
+      return "w-20 min-w-[80px] shrink-0"
     case "quantity":
-      return "w-28 min-w-[112px] shrink-0"
+      return "w-20 min-w-[80px] shrink-0"
     case "total_cost":
-      return "w-28 min-w-[112px] shrink-0"
+      return "w-24 min-w-[96px] shrink-0"
     case "comments":
-      return "min-w-[260px] max-w-[380px] whitespace-normal"
+      return "min-w-[160px] max-w-[280px] whitespace-normal"
     case "actions":
-      return "w-28 min-w-[112px] pr-3 shrink-0"
+      return "w-20 min-w-[80px] pr-2 shrink-0"
     default:
       return ""
   }
@@ -217,7 +219,7 @@ function TableRowItem({
         return (
           <TableCell
             key={cell.id}
-            className={`py-3 px-3 align-middle ${alignClass} ${colClass}`}
+            className={`py-4 px-3 align-middle ${alignClass} ${colClass}`}
           >
             <FlexRender cell={cell} />
           </TableCell>
@@ -556,31 +558,33 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
           cell: ({ row }) => {
             const item = row.original
             return (
-              <div className="flex flex-col gap-0.5 max-w-[540px]">
+              <div className="flex flex-col gap-1 py-1 min-w-0">
                 <button
                   type="button"
                   onClick={() => handleOpenEditDrawer(item)}
-                  className="w-fit text-left text-foreground hover:text-primary text-xs font-semibold hover:underline p-0 h-auto transition-colors duration-150 cursor-pointer justify-start no-underline truncate max-w-[420px]"
+                  className="w-fit text-left text-foreground hover:text-primary text-xs font-semibold hover:underline p-0 h-auto transition-colors duration-150 cursor-pointer justify-start no-underline leading-snug"
                 >
                   {item.header}
                 </button>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-semibold bg-muted/80 text-muted-foreground border border-border/60 uppercase">
+                    {item.unit || "each"}
+                  </span>
+                  {item.category && (
+                    <span className="text-[10.5px] text-muted-foreground/75 font-normal">
+                      • {item.category}
+                    </span>
+                  )}
+                </div>
               </div>
             )
           },
           enableHiding: false,
         }),
-        columnHelper.accessor("unit", {
-          header: () => <div className="w-20 text-center text-xs font-semibold text-muted-foreground">Unit</div>,
-          cell: ({ row }) => (
-            <div className="w-20 text-center font-mono text-xs font-medium text-muted-foreground">
-              <span className="px-2 py-0.5 rounded bg-muted/60 border border-border/60">{row.original.unit || "EA"}</span>
-            </div>
-          ),
-        }),
         columnHelper.accessor("rate", {
-          header: () => <div className="w-28 text-right text-xs font-semibold text-muted-foreground">Rate ($ Excl. GST)</div>,
+          header: () => <div className="w-20 text-right text-xs font-semibold text-muted-foreground">Rate ($ Excl. GST)</div>,
           cell: ({ row }) => (
-            <div className="w-28 text-right font-medium tabular-nums text-xs text-foreground">
+            <div className="w-20 text-right font-medium tabular-nums text-xs text-foreground">
               <span className="text-muted-foreground/60 mr-0.5">$</span>
               {row.original.rate.toFixed(2)}
             </div>
@@ -642,49 +646,51 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
         enableHiding: false,
       }),
       columnHelper.accessor("code", {
-        header: () => <div className="w-24 text-xs font-semibold text-muted-foreground">SOR Code</div>,
-        cell: ({ row }) => <div className="w-24 font-mono text-xs font-semibold text-primary">{row.original.code || "—"}</div>,
+        header: () => <div className="w-20 text-xs font-semibold text-muted-foreground">SOR Code</div>,
+        cell: ({ row }) => <div className="w-20 font-mono text-xs font-semibold text-primary">{row.original.code || "—"}</div>,
       }),
       columnHelper.accessor("header", {
         header: () => <div className="text-xs font-semibold text-muted-foreground">Item Description</div>,
         cell: ({ row }) => {
           const item = row.original
           return (
-            <div className="flex flex-col gap-0.5 max-w-[420px]">
+            <div className="flex flex-col gap-1 py-1 max-w-[420px]">
               <button
                 type="button"
                 onClick={() => handleOpenProvenanceDrawer(item)}
-                className="w-fit text-left text-foreground hover:text-primary text-xs font-semibold hover:underline p-0 h-auto transition-colors duration-150 cursor-pointer justify-start no-underline truncate max-w-[420px]"
+                className="w-fit text-left text-foreground hover:text-primary text-xs font-semibold hover:underline p-0 h-auto transition-colors duration-150 cursor-pointer justify-start no-underline line-clamp-2 max-w-[420px]"
                 title="Click to view mapped constituent facts, sources & duplicate items"
               >
                 {item.header}
               </button>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted/80 text-[10px] font-mono text-muted-foreground border border-border/60">
+                  Unit: {item.unit || "EA"}
+                </span>
+                {item.category && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted/40 text-[10px] text-muted-foreground/80 border border-border/40">
+                    {item.category}
+                  </span>
+                )}
+              </div>
             </div>
           )
         },
         enableHiding: false,
       }),
-      columnHelper.accessor("unit", {
-        header: () => <div className="w-16 text-center text-xs font-semibold text-muted-foreground">Unit</div>,
-        cell: ({ row }) => (
-          <div className="w-16 text-center font-mono text-xs font-medium text-muted-foreground">
-            <span className="px-2 py-0.5 rounded bg-muted/60 border border-border/60">{row.original.unit || "EA"}</span>
-          </div>
-        ),
-      }),
       columnHelper.accessor("rate", {
-        header: () => <div className="w-24 text-right text-xs font-semibold text-muted-foreground">Unit Rate</div>,
+        header: () => <div className="w-20 text-right text-xs font-semibold text-muted-foreground">Unit Rate</div>,
         cell: ({ row }) => (
-          <div className="w-24 text-right font-medium tabular-nums text-xs text-foreground">
+          <div className="w-20 text-right font-medium tabular-nums text-xs text-foreground">
             <span className="text-muted-foreground/60 mr-0.5">$</span>
             {row.original.rate.toFixed(2)}
           </div>
         ),
       }),
       columnHelper.accessor("quantity", {
-        header: () => <div className="w-28 text-center text-xs font-semibold text-muted-foreground">Qty</div>,
+        header: () => <div className="w-20 text-center text-xs font-semibold text-muted-foreground">Qty</div>,
         cell: ({ row }) => (
-          <div className="w-28 flex items-center justify-center">
+          <div className="w-20 flex items-center justify-center">
             <Input
               type="number"
               min="0"
@@ -692,18 +698,18 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
               defaultValue={row.original.quantity || ""}
               placeholder="0"
               onBlur={(e) => handleQuantityChange(row.original.id, e.target.value)}
-              className="h-7 w-20 text-center text-xs font-mono bg-background border-border/70 focus-visible:ring-1 focus-visible:ring-primary shadow-2xs"
+              className="h-7 w-16 text-center text-xs font-mono bg-background border-border/70 focus-visible:ring-1 focus-visible:ring-primary shadow-2xs"
             />
           </div>
         ),
       }),
       columnHelper.display({
         id: "total_cost",
-        header: () => <div className="w-28 text-right text-xs font-semibold text-muted-foreground">Total Cost</div>,
+        header: () => <div className="w-24 text-right text-xs font-semibold text-muted-foreground">Total Cost</div>,
         cell: ({ row }) => {
           const total = (row.original.rate || 0) * (row.original.quantity || 0)
           return (
-            <div className="w-28 text-right font-medium tabular-nums text-xs text-foreground">
+            <div className="w-24 text-right font-medium tabular-nums text-xs text-foreground">
               {total > 0 ? (
                 <>
                   <span className="text-muted-foreground/60 mr-0.5">$</span>
@@ -722,9 +728,9 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
       }),
       columnHelper.display({
         id: "actions",
-        header: () => <div className="text-right pr-2 text-xs font-semibold text-muted-foreground">Actions</div>,
+        header: () => <div className="w-20 text-right pr-2 text-xs font-semibold text-muted-foreground">Actions</div>,
         cell: ({ row }) => (
-          <div className="flex items-center justify-end gap-1 pr-1 shrink-0">
+          <div className="flex items-center justify-end gap-1 pr-1 shrink-0 w-20">
             <Button
               variant="ghost"
               size="icon"
@@ -756,7 +762,7 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
         ),
       }),
     ])
-  }, [viewMode, handleQuantityChange, handleDeleteItem, handleOpenEditDrawer])
+  }, [handleQuantityChange, handleDeleteItem, handleOpenEditDrawer, handleOpenProvenanceDrawer])
 
   const filteredData = React.useMemo(() => {
     let result = data
@@ -773,6 +779,13 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
     }
     return result
   }, [data, searchQuery])
+
+  const stats = React.useMemo(() => {
+    const totalItems = data.length
+    const pricedCount = data.filter((d) => (d.quantity || 0) > 0).length
+    const totalCost = data.reduce((sum, d) => sum + (d.rate || 0) * (d.quantity || 0), 0)
+    return { totalItems, pricedCount, totalCost }
+  }, [data])
 
   const table = useTable({
     features,
@@ -792,17 +805,10 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
     onColumnVisibilityChange: setColumnVisibility,
   })
 
-  const stats = React.useMemo(() => {
-    const totalItems = data.length
-    const pricedCount = data.filter((d) => (d.quantity || 0) > 0).length
-    const totalCost = data.reduce((sum, d) => sum + (d.rate || 0) * (d.quantity || 0), 0)
-    return { totalItems, pricedCount, totalCost }
-  }, [data])
-
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 bg-card rounded-xl border border-border shadow-xs overflow-hidden">
-      <div className="p-3.5 border-b border-border/80 flex flex-col sm:flex-row gap-2.5 items-center justify-between bg-muted/20 select-none shrink-0">
-        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+      <div className="p-3 border-b border-border/80 flex flex-col sm:flex-row gap-2.5 items-center justify-between bg-muted/20 select-none shrink-0">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <div className="relative w-full sm:w-72">
             <SearchIcon className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
             <Input
@@ -824,7 +830,7 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end w-full sm:w-auto">
           {table.getSelectedRowModel().rows.length > 0 && (
             <Button
               variant="destructive"
@@ -845,44 +851,49 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
                 <ChevronDownIcon className="size-3 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-36 text-xs">
+            <DropdownMenuContent align="end" className="w-48">
+              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Toggle columns</div>
+              <div className="-mx-1 my-1 h-px bg-border" />
               {table
                 .getAllColumns()
                 .filter((column) => typeof column.accessorFn !== "undefined" && column.getCanHide())
-                .map((column) => (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    className="capitalize text-xs cursor-pointer"
-                    checked={column.getIsVisible()}
-                    onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                  >
-                    {column.id}
-                  </DropdownMenuCheckboxItem>
-                ))}
+                .map((column) => {
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={column.id}
+                      className="capitalize text-xs cursor-pointer"
+                      checked={column.getIsVisible()}
+                      onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                    >
+                      {column.id === 'header' ? 'Item Description' : column.id.replace("_", " ")}
+                    </DropdownMenuCheckboxItem>
+                  )
+                })}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto min-h-0 relative">
-        <table className="w-full caption-bottom text-sm border-collapse">
-          <thead className="sticky top-0 z-30 bg-muted/95 backdrop-blur-md border-b border-border/80 shadow-xs">
+      <div className="flex-1 min-h-0 overflow-auto">
+        <Table>
+          <TableHeader className="sticky top-0 bg-muted/95 backdrop-blur-xs z-10 border-b border-border shadow-2xs">
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="hover:bg-transparent border-b border-border/80 bg-muted/95">
+              <TableRow key={headerGroup.id} className="hover:bg-transparent border-b border-border/60">
                 {headerGroup.headers.map((header) => {
-                  const canSort = header.column.getCanSort()
                   const isSorted = header.column.getIsSorted()
-                  const alignClass = getColumnAlignment(header.column.id)
-                  const colClass = getColumnClass(header.column.id, viewMode)
                   return (
-                    <th
+                    <TableHead
                       key={header.id}
-                      className={`h-10 px-3 align-middle font-semibold text-xs text-muted-foreground select-none whitespace-nowrap ${alignClass} ${colClass}`}
+                      className={`h-9 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground ${getColumnAlignment(header.column.id)} ${getColumnClass(header.column.id)}`}
                     >
-                      {header.isPlaceholder ? null : canSort ? (
+                      {header.isPlaceholder ? null : header.column.getCanSort() ? (
                         <div
-                          className={`flex items-center gap-1.5 cursor-pointer hover:text-foreground transition-colors group ${
-                            alignClass === "text-right" ? "justify-end" : alignClass === "text-center" ? "justify-center" : "justify-start"
+                          className={`flex items-center gap-1.5 cursor-pointer select-none group ${
+                            getColumnAlignment(header.column.id).includes("right")
+                              ? "justify-end"
+                              : getColumnAlignment(header.column.id).includes("center")
+                              ? "justify-center"
+                              : "justify-start"
                           }`}
                           onClick={header.column.getToggleSortingHandler()}
                         >
@@ -898,12 +909,12 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
                       ) : (
                         <FlexRender header={header} />
                       )}
-                    </th>
+                    </TableHead>
                   )
                 })}
               </TableRow>
             ))}
-          </thead>
+          </TableHeader>
           <TableBody>
             {loading || (data.length === 0 && initialData && initialData.length > 0) ? (
               Array.from({ length: skeletonCount }).map((_, index) => {
@@ -912,71 +923,37 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
                 const hasSubline = index % 3 === 1
                 return (
                   <TableRow key={`skeleton-${index}`} className="border-b border-border/30 hover:bg-transparent">
-                    {viewMode === 'pricelist' ? (
-                      <>
-                        <TableCell className="py-2.5 px-0 text-center w-10 shrink-0">
-                          <Skeleton className="size-4 mx-auto rounded-[4px] border border-border/60" />
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 w-28 shrink-0">
-                          <Skeleton className="h-4.5 w-20 rounded-md bg-primary/10 border border-primary/20" />
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 min-w-[320px]">
-                          <div className="space-y-1.5 py-0.5">
-                            <Skeleton className={`h-4 rounded-md ${descWidth}`} />
-                            {hasSubline && <Skeleton className="h-3 w-1/3 rounded opacity-40" />}
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 text-center w-20 shrink-0">
-                          <Skeleton className="h-5 w-11 mx-auto rounded-md border border-border/40" />
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 text-right w-28 shrink-0">
-                          <Skeleton className="h-4.5 w-16 ml-auto rounded-md" />
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 text-right w-24 shrink-0">
-                          <div className="flex items-center justify-end gap-1 pr-1">
-                            <Skeleton className="size-7 rounded-md border border-border/30" />
-                            <Skeleton className="size-7 rounded-md border border-border/30" />
-                          </div>
-                        </TableCell>
-                      </>
-                    ) : (
-                      <>
-                        <TableCell className="py-2.5 px-0 text-center w-10 shrink-0">
-                          <Skeleton className="size-4 mx-auto rounded-[4px] border border-border/60" />
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 w-24 shrink-0">
-                          <Skeleton className="h-4.5 w-20 rounded-md bg-primary/10 border border-primary/20" />
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 min-w-[280px]">
-                          <div className="space-y-1.5 py-0.5">
-                            <Skeleton className={`h-4 rounded-md ${descWidth}`} />
-                            {hasSubline && <Skeleton className="h-3 w-1/3 rounded opacity-40" />}
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 text-center w-16 shrink-0">
-                          <Skeleton className="h-5 w-11 mx-auto rounded-md border border-border/40" />
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 text-right w-24 shrink-0">
-                          <Skeleton className="h-4.5 w-16 ml-auto rounded-md" />
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 text-center w-28 shrink-0">
-                          <Skeleton className="h-7 w-20 mx-auto rounded-lg border border-border/50" />
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 text-right w-28 shrink-0">
-                          <Skeleton className="h-4.5 w-20 ml-auto rounded-md font-mono" />
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 min-w-[260px] max-w-[380px]">
-                          <Skeleton className="h-4.5 w-28 rounded-md opacity-60" />
-                        </TableCell>
-                        <TableCell className="py-2.5 px-3 text-right w-28 shrink-0">
-                          <div className="flex items-center justify-end gap-1 pr-1">
-                            <Skeleton className="size-7 rounded-md border border-border/30" />
-                            <Skeleton className="size-7 rounded-md border border-border/30" />
-                            <Skeleton className="size-7 rounded-md border border-border/30" />
-                          </div>
-                        </TableCell>
-                      </>
-                    )}
+                    <TableCell className="py-3.5 px-0 text-center w-9 shrink-0">
+                      <Skeleton className="size-4 mx-auto rounded-[4px] border border-border/60" />
+                    </TableCell>
+                    <TableCell className="py-3.5 px-3 w-20 shrink-0">
+                      <Skeleton className="h-4.5 w-16 rounded-md bg-primary/10 border border-primary/20" />
+                    </TableCell>
+                    <TableCell className="py-3.5 px-3 min-w-[280px]">
+                      <div className="space-y-1.5 py-0.5">
+                        <Skeleton className={`h-4 rounded-md ${descWidth}`} />
+                        {hasSubline && <Skeleton className="h-3 w-1/3 rounded opacity-40" />}
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-3.5 px-3 text-right w-20 shrink-0">
+                      <Skeleton className="h-4.5 w-14 ml-auto rounded-md" />
+                    </TableCell>
+                    <TableCell className="py-3.5 px-3 text-center w-20 shrink-0">
+                      <Skeleton className="h-7 w-16 mx-auto rounded-lg border border-border/50" />
+                    </TableCell>
+                    <TableCell className="py-3.5 px-3 text-right w-24 shrink-0">
+                      <Skeleton className="h-4.5 w-16 ml-auto rounded-md font-mono" />
+                    </TableCell>
+                    <TableCell className="py-3.5 px-3 min-w-[200px] max-w-[280px]">
+                      <Skeleton className="h-4.5 w-24 rounded-md opacity-60" />
+                    </TableCell>
+                    <TableCell className="py-3.5 px-3 text-right w-20 shrink-0">
+                      <div className="flex items-center justify-end gap-1 pr-1">
+                        <Skeleton className="size-7 rounded-md border border-border/30" />
+                        <Skeleton className="size-7 rounded-md border border-border/30" />
+                        <Skeleton className="size-7 rounded-md border border-border/30" />
+                      </div>
+                    </TableCell>
                   </TableRow>
                 )
               })
@@ -1009,7 +986,7 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
               </TableRow>
             )}
           </TableBody>
-        </table>
+        </Table>
       </div>
 
       <div className="p-3 px-4.5 border-t border-border/80 bg-muted/20 flex flex-col sm:flex-row items-center justify-between text-xs select-none shrink-0 gap-2">
@@ -1265,9 +1242,18 @@ export const BOQDataTable = React.forwardRef<BOQDataTableRef, BOQDataTableProps>
 
       <ItemProvenanceDrawer
         isOpen={provenanceDrawerOpen}
-        onClose={() => setProvenanceDrawerOpen(false)}
+        onClose={() => {
+          setProvenanceDrawerOpen(false)
+          setSelectedProvenanceItem(null)
+        }}
         item={selectedProvenanceItem}
         onNavigateToPage={onNavigateToPage}
+        onFeedbackLogged={(item, newCode) => {
+          setData((prev) =>
+            prev.map((it) => (it.id === item.id ? { ...it, code: newCode } : it))
+          )
+          if (onReload) onReload()
+        }}
       />
     </div>
   )

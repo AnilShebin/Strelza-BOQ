@@ -74,7 +74,7 @@ def load_master_price_list(file_path: str = "", price_list_id: Optional[int] = N
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, code, name, unit, rate, quantity, category, action, comments, confidence_score, confidence_level, evidence_json, attributes_json, mapping_rule, equipment_type, action_type, location_type, calc_rule, aggregation_rule, pricing_group FROM price_items WHERE price_list_id = ? ORDER BY id",
+            "SELECT id, code, name, unit, rate, quantity, category, action, comments, confidence_score, confidence_level, evidence_json, attributes_json, mapping_rule FROM price_items WHERE price_list_id = ? ORDER BY id",
             (price_list_id,)
         )
         rows = cursor.fetchall()
@@ -107,12 +107,6 @@ def load_master_price_list(file_path: str = "", price_list_id: Optional[int] = N
                 "evidence_json": r["evidence_json"] if "evidence_json" in r.keys() else "",
                 "attributes_json": r["attributes_json"] if "attributes_json" in r.keys() else "",
                 "mapping_rule": r["mapping_rule"] if "mapping_rule" in r.keys() and r["mapping_rule"] else "",
-                "equipment_type": r["equipment_type"] if "equipment_type" in r.keys() and r["equipment_type"] else "",
-                "action_type": r["action_type"] if "action_type" in r.keys() and r["action_type"] else "",
-                "location_type": r["location_type"] if "location_type" in r.keys() and r["location_type"] else "",
-                "calc_rule": r["calc_rule"] if "calc_rule" in r.keys() and r["calc_rule"] else "",
-                "aggregation_rule": r["aggregation_rule"] if "aggregation_rule" in r.keys() and r["aggregation_rule"] else "SUM",
-                "pricing_group": r["pricing_group"] if "pricing_group" in r.keys() and r["pricing_group"] else "",
                 "cells": [
                     r["code"] or "",
                     r["name"] or "",
@@ -220,44 +214,16 @@ def update_price_item_in_excel(file_path: str, row_idx: int, code: str, name: st
 def update_price_item_rule(
     row_idx: int,
     rule_text: str,
-    equipment_type: Optional[str] = None,
-    action_type: Optional[str] = None,
-    location_type: Optional[str] = None,
-    calc_rule: Optional[str] = None,
-    aggregation_rule: Optional[str] = None,
-    pricing_group: Optional[str] = None
+    *args,
+    **kwargs
 ) -> bool:
-    """Updates the mapping rule and structured calculation metadata for a specific item in SQLite."""
+    """Updates the 3-line engineering prompt rule for a specific item in SQLite."""
     try:
         from services.db import get_db_connection
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        updates = ["mapping_rule = ?"]
-        params = [rule_text.strip()]
-
-        if equipment_type is not None:
-            updates.append("equipment_type = ?")
-            params.append(equipment_type.strip())
-        if action_type is not None:
-            updates.append("action_type = ?")
-            params.append(action_type.strip())
-        if location_type is not None:
-            updates.append("location_type = ?")
-            params.append(location_type.strip())
-        if calc_rule is not None:
-            updates.append("calc_rule = ?")
-            params.append(calc_rule.strip())
-        if aggregation_rule is not None:
-            updates.append("aggregation_rule = ?")
-            params.append(aggregation_rule.strip())
-        if pricing_group is not None:
-            updates.append("pricing_group = ?")
-            params.append(pricing_group.strip())
-
-        params.append(row_idx)
-        sql = f"UPDATE price_items SET {', '.join(updates)} WHERE id = ?"
-        cursor.execute(sql, tuple(params))
+        cursor.execute("UPDATE price_items SET mapping_rule = ? WHERE id = ?", (rule_text.strip(), row_idx))
         conn.commit()
         conn.close()
         return True

@@ -22,7 +22,10 @@ import {
   FileTextIcon,
   LayersIcon,
   MapPinIcon,
+  EditIcon,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import type { BOQTableItem } from './BOQDataTable';
 
 export interface SourceEvidenceItem {
@@ -54,6 +57,7 @@ interface ItemProvenanceDrawerProps {
   onClose: () => void;
   item: BOQTableItem | null;
   onNavigateToPage?: (page: number) => void;
+  onFeedbackLogged?: (item: BOQTableItem, newCode: string) => void;
 }
 
 export const ItemProvenanceDrawer: React.FC<ItemProvenanceDrawerProps> = ({
@@ -61,8 +65,14 @@ export const ItemProvenanceDrawer: React.FC<ItemProvenanceDrawerProps> = ({
   onClose,
   item,
   onNavigateToPage,
+  onFeedbackLogged,
 }) => {
   const [filterMode, setFilterMode] = useState<'all' | 'mapped' | 'duplicates'>('all');
+  const [isOverriding, setIsOverriding] = useState(false);
+  const [overrideCode, setOverrideCode] = useState('');
+  const [overrideReason, setOverrideReason] = useState('');
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
 
   // Parse evidence json
   const evidenceData = useMemo(() => {
@@ -193,6 +203,91 @@ export const ItemProvenanceDrawer: React.FC<ItemProvenanceDrawerProps> = ({
     }
   };
 
+  const handleConfirmMatch = async () => {
+    if (!item) return;
+    setSubmittingFeedback(true);
+    try {
+      const payload = {
+        takeoff_item: {
+          id: item.id || `item_${item.code}`,
+          model: item.name,
+          raw_description: item.name,
+          quantity: totalQty,
+          unit: item.unit || 'each',
+          equipment_type: item.category || 'EQUIPMENT',
+          action: item.action || 'INSTALL',
+          source_sheet: rawSources[0]?.source_sheet || 'Drawing Sheet'
+        },
+        system_decision: {
+          chosen_code: item.code,
+          confidence: (item.confidence_score || 95) / 100,
+          outcome: item.code === 'UNQUOTED' ? 'NO_MATCH' : 'MATCHED'
+        },
+        corrected_code: item.code || 'UNQUOTED',
+        correction_reason: 'Estimator confirmed match in UI provenance review',
+        corrected_by: 'Estimator'
+      };
+
+      const res = await fetch('http://localhost:8000/api/feedback/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error('Failed to log feedback');
+      toast.success(`Precedent confirmed for ${item.code}! Learned by AI engine.`);
+      setFeedbackSuccess(`Confirmed: Code ${item.code} indexed into RAG memory.`);
+    } catch (err: any) {
+      toast.error(err.message || 'Error logging feedback');
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
+
+  const handleOverrideMatch = async () => {
+    if (!item || !overrideCode.trim()) return;
+    const targetCode = overrideCode.trim().toUpperCase();
+    setSubmittingFeedback(true);
+    try {
+      const payload = {
+        takeoff_item: {
+          id: item.id || `item_${item.code}`,
+          model: item.name,
+          raw_description: item.name,
+          quantity: totalQty,
+          unit: item.unit || 'each',
+          equipment_type: item.category || 'EQUIPMENT',
+          action: item.action || 'INSTALL',
+          source_sheet: rawSources[0]?.source_sheet || 'Drawing Sheet'
+        },
+        system_decision: {
+          chosen_code: item.code,
+          confidence: (item.confidence_score || 95) / 100,
+          outcome: item.code === 'UNQUOTED' ? 'NO_MATCH' : 'MATCHED'
+        },
+        corrected_code: targetCode,
+        correction_reason: overrideReason.trim() || 'Estimator manual override in UI provenance review',
+        corrected_by: 'Estimator'
+      };
+
+      const res = await fetch('http://localhost:8000/api/feedback/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error('Failed to log override');
+      toast.success(`Override saved: Code ${targetCode} indexed as precedent!`);
+      setFeedbackSuccess(`Override active: Code ${targetCode} learned for this takeoff pattern.`);
+      onFeedbackLogged?.(item, targetCode);
+      setIsOverriding(false);
+    } catch (err: any) {
+      toast.error(err.message || 'Error logging override');
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
+
   return (
     <Drawer open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }} direction="right">
       <DrawerContent
@@ -278,6 +373,115 @@ export const ItemProvenanceDrawer: React.FC<ItemProvenanceDrawerProps> = ({
               </span>
             </div>
           </div>
+        </div>
+
+        {/* Estimator Feedback & Precedent Learning Panel */}
+        <div className="mx-5 mt-3.5 p-3 rounded-xl border border-primary/20 bg-primary/5 dark:bg-primary/10 flex flex-col gap-2.5 shrink-0 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="p-1 rounded-md bg-primary/10 text-primary">
+                <CheckCircle2Icon className="size-4" />
+              </span>
+              <div>
+                <span className="font-bold text-foreground text-xs">
+                  RAG Precedent & Estimator Feedback Loop
+                </span>
+                <span className="text-[11px] text-muted-foreground block">
+                  Current Match: <strong className="text-foreground font-mono">{item.code || 'UNQUOTED'}</strong> ({confScore}% confidence)
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleConfirmMatch}
+                disabled={submittingFeedback}
+                className="h-7 px-2.5 text-xs font-semibold gap-1 rounded-lg border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
+                title="Confirm this match to reinforce AI precedent memory"
+              >
+                <CheckCircle2Icon className="size-3.5" />
+                <span>Confirm Match</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setOverrideCode(item.code && item.code !== 'UNQUOTED' ? item.code : '');
+                  setIsOverriding(!isOverriding);
+                }}
+                disabled={submittingFeedback}
+                className="h-7 px-2.5 text-xs font-semibold gap-1 rounded-lg border-border hover:bg-muted cursor-pointer"
+                title="Override this line item with a different SOR code"
+              >
+                <EditIcon className="size-3.5 text-muted-foreground" />
+                <span>{isOverriding ? 'Close' : 'Override Code'}</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Feedback Success Notification */}
+          {feedbackSuccess && (
+            <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[11px] flex items-center gap-2">
+              <CheckCircle2Icon className="size-3.5 text-emerald-500 shrink-0" />
+              <span>{feedbackSuccess}</span>
+            </div>
+          )}
+
+          {/* Inline Override Form */}
+          {isOverriding && (
+            <div className="pt-2 border-t border-primary/10 flex flex-col gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[10.5px] font-semibold text-muted-foreground uppercase">Target SOR Code</Label>
+                  <Input
+                    type="text"
+                    value={overrideCode}
+                    onChange={(e) => setOverrideCode(e.target.value)}
+                    placeholder="e.g. W13358 or UNQUOTED"
+                    className="h-7.5 text-xs font-mono"
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10.5px] font-semibold text-muted-foreground uppercase">Reason / Estimator Note</Label>
+                  <Input
+                    type="text"
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                    placeholder="e.g. S3-3 notes confirm dual carrier feed..."
+                    className="h-7.5 text-xs"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleOverrideMatch();
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsOverriding(false)}
+                  className="h-7 text-xs px-2.5 cursor-pointer"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleOverrideMatch}
+                  disabled={submittingFeedback || !overrideCode.trim()}
+                  className="h-7 text-xs px-3 bg-primary text-primary-foreground font-semibold rounded-lg cursor-pointer"
+                >
+                  {submittingFeedback ? 'Saving Precedent...' : 'Save & Index Precedent'}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Warning / Discrepancy Banner if applicable */}
