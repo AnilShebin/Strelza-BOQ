@@ -549,15 +549,22 @@ async def generate_boq(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         mapped_boq_items = []
         
-        # Step 1: Execute Pure RAG Takeoff Engine (Universal Drawing Schedules & 3-Line Prompt Rules)
+        # Step 1: Execute Agentic BOQ Takeoff Engine (Gemini 3.8 Flash + Specialized Agent Tools)
         try:
             if api_key and (extracted_tables or elements):
-                print(f"[Generate BOQ] Running Pure RAG Takeoff Engine with Gemini...")
-                from services.ai_service import run_gemini_boq_mapper_and_deduplicator
-                ai_items = run_gemini_boq_mapper_and_deduplicator(
-                    extracted_tables, elements, price_list, api_key
-                )
-                print(f"[Generate BOQ] Pure RAG Engine mapped {len(ai_items) if isinstance(ai_items, list) else 0} items.")
+                print(f"[Generate BOQ] Running Agentic BOQ Takeoff Engine (Gemini 3.8 Flash)...")
+                try:
+                    from services.agent_service import run_agentic_boq_pipeline
+                    ai_items = run_agentic_boq_pipeline(
+                        extracted_tables, elements, price_list, api_key
+                    )
+                    print(f"[Generate BOQ] Agentic Engine mapped {len(ai_items) if isinstance(ai_items, list) else 0} items.")
+                except Exception as agent_err:
+                    print(f"[Generate BOQ] Agentic Engine error: {agent_err}. Falling back to standard mapper...")
+                    from services.ai_service import run_gemini_boq_mapper_and_deduplicator
+                    ai_items = run_gemini_boq_mapper_and_deduplicator(
+                        extracted_tables, elements, price_list, api_key
+                    )
                 if ai_items and isinstance(ai_items, list):
                     for idx, m_item in enumerate(ai_items):
                         rate = float(m_item.get("rate", 0.0))
