@@ -16,7 +16,7 @@ import urllib.request
 import urllib.error
 from typing import List, Dict, Any
 
-MODELS_TO_TRY = ["gemini-1.5-flash-latest", "gemini-2.0-flash", "gemini-2.5-flash-lite"]
+MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-latest"]
 
 def call_llm_judge(prompt: str, api_key: str) -> str:
     """Calls Gemini API with retries and fallback."""
