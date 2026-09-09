@@ -6,10 +6,14 @@ backend_dir = os.path.dirname(os.path.abspath(__file__))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
+from services.ai_service import load_env_file
 from services.agent_service import run_agentic_boq_pipeline
 
-def test_pipeline_with_feeder_and_antennas():
-    print("=== Testing Agentic BOQ Pipeline End-to-End ===")
+load_env_file()
+api_key = os.environ.get("GEMINI_API_KEY", "")
+
+def test_full_pipeline():
+    print("=== Testing Agentic BOQ Pipeline with Gemini 3.8 Flash ===")
     
     # Mock extracted tables from drawing schedule
     extracted_tables = [
@@ -44,24 +48,25 @@ def test_pipeline_with_feeder_and_antennas():
         {"code": "R12513", "name": "Remove Panel Antenna or tower mounted device", "unit": "Each", "rate": 285.0, "row_idx": 6},
     ]
 
-    # Run without API key first to test deterministic logic paths
     results = run_agentic_boq_pipeline(
         extracted_tables=extracted_tables,
         elements=elements,
         price_list=price_list,
-        api_key=None
+        api_key=api_key
     )
 
-    print(f"Generated {len(results)} mapped BOQ items:")
+    print(f"\nGenerated {len(results)} mapped BOQ items:")
     for r in results:
         print(f"  - [{r.get('sor_code')}] {r.get('item_name')} | Qty: {r.get('quantity')} {r.get('unit')} | Rate: ${r.get('rate')} | Total: ${r.get('total_cost')} | Logic: {r.get('comment')}")
 
     # Assertions
     codes = [r.get("sor_code") for r in results]
-    assert "W12818" in codes, "Expected Feeder pair W12818 to be mapped"
-    assert "W7520" in codes or "W13360" in codes, "Expected 4G panel antenna to be mapped"
-    assert "W13358" in codes or "W13359" in codes, "Expected 5G AAU to be mapped"
-    print("\nAGENTIC BOQ PIPELINE TEST PASSED WITH 100% COVERAGE!")
+    assert "W12818" in codes, "Expected Feeder pair W12818"
+    assert "W7520" in codes, "Expected W7520 for 1st antenna"
+    assert "W13360" in codes, "Expected W13360 for extra-over antennas"
+    assert "W13358" in codes, "Expected W13358 for 1st 5G AAU"
+    assert "W13359" in codes, "Expected W13359 for extra-over 5G AAUs"
+    print("\nALL PIPELINE TESTS PASSED WITH GEMINI 3.8 FLASH!")
 
 if __name__ == "__main__":
-    test_pipeline_with_feeder_and_antennas()
+    test_full_pipeline()

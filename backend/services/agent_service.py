@@ -2,7 +2,7 @@
 agent_service.py - Multi-Stage Agentic Architecture powered by Gemini 3.8 Flash
 
 Implements real agentic execution:
-1. Stage 1: Table-First Authoritative Takeoff Extraction
+1. Stage 1: Table-First Authoritative Takeoff Extraction & Consolidation
 2. Stage 2: Deterministic Constraint Gating
 3. Stage 3: Gemini 3.8 Flash Multi-Turn Tool Deliberation (with mandatory commercial basis verification)
 4. Stage 4: Zero-Loss Scope Reconciliation & Multiplicity Aggregation
@@ -26,12 +26,12 @@ from services.agent_tools import (
 )
 from services.constraint_gate import filter_candidates
 
-# Model cascade prioritizes Gemini 3.8 Flash with robust fallback
+# Model cascade prioritizes Gemini 3.8 Flash with verified supported fallbacks
 MODELS_CASCADE = [
     "gemini-3.8-flash",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash-latest"
+    "gemini-3.7-flash",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash"
 ]
 
 def send_agent_turn(
@@ -39,13 +39,13 @@ def send_agent_turn(
     api_key: str,
     tools: Optional[List[Dict[str, Any]]] = None,
     timeout: int = 40
-) -> Tuple[Optional[str], Optional[List[Dict[str, Any]]], str]:
+) -> Tuple[Optional[str], Optional[List[Dict[str, Any]]], Optional[Dict[str, Any]], str]:
     """
     Executes a single model turn against Google Generative Language API.
-    Returns: (text_content, tool_calls_list, model_used)
+    Returns: (text_content, tool_calls_list, raw_content, model_used)
     """
     if not api_key:
-        return None, None, ""
+        return None, None, None, ""
 
     for model_name in MODELS_CASCADE:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
@@ -75,23 +75,19 @@ def send_agent_turn(
                     candidates = res_json.get("candidates", [])
                     if not candidates:
                         continue
-                    content = candidates[0].get("content", {})
-                    parts = content.get("parts", [])
+                    raw_content = candidates[0].get("content", {})
+                    parts = raw_content.get("parts", [])
                     
-                    text_parts = []
-                    tool_calls = []
-                    for p in parts:
-                        if "text" in p and p["text"]:
-                            text_parts.append(p["text"])
-                        if "functionCall" in p:
-                            tool_calls.append(p["functionCall"])
-                            
+                    text_parts = [p["text"] for p in parts if "text" in p and p["text"]]
+                    tool_calls = [p["functionCall"] for p in parts if "functionCall" in p]
+                    
                     full_text = "\n".join(text_parts) if text_parts else None
-                    return full_text, (tool_calls if tool_calls else None), model_name
+                    return full_text, (tool_calls if tool_calls else None), raw_content, model_name
             except urllib.error.HTTPError as e:
-                # If 404 (model not found), try next model in cascade immediately
+                err_body = e.read().decode("utf-8") if e.fp else ""
+                print(f"[Agent Service] Model '{model_name}' HTTP {e.code}: {err_body[:180]}")
                 if e.code == 404:
-                    print(f"[Agent Service] Model '{model_name}' endpoint returned 404, falling back to next model...")
+                    print(f"[Agent Service] Model '{model_name}' endpoint returned 404, trying next in cascade...")
                     break
                 elif e.code in [429, 500, 503]:
                     time.sleep(2)
@@ -102,7 +98,7 @@ def send_agent_turn(
                 time.sleep(1)
                 continue
 
-    return None, None, ""
+    return None, None, None, ""
 
 def run_agentic_boq_pipeline(
     extracted_tables: List[Dict[str, Any]],
@@ -116,9 +112,9 @@ def run_agentic_boq_pipeline(
     print("[Agentic Pipeline] Initializing Stage 1: Table-First Takeoff Extraction...")
     
     # -------------------------------------------------------------------------
-    # STAGE 1: Extract Authoritative Takeoff Items from Drawing Tables
+    # STAGE 1: Extract & Consolidate Authoritative Takeoff Items from Drawing Tables
     # -------------------------------------------------------------------------
-    takeoff_items: List[Dict[str, Any]] = []
+    raw_takeoff_items: List[Dict[str, Any]] = []
     layout_notes = [
         {"text": str(el.get("content") or el.get("text") or ""), "page": el.get("page", 1)}
         for el in elements if el.get("type") == "unstructured" and len(str(el.get("content") or "")) > 10
@@ -131,13 +127,19 @@ def run_agentic_boq_pipeline(
         rows = t.get("rows", [])
         headers = [str(h).upper().strip() for h in t.get("headers", [])]
         sheet = t.get("sheet_name") or f"Page {t.get('page', 1)}"
-        table_title = t.get("table_title", "Table").upper()
+        table_title = str(t.get("table_title", "Table")).upper()
+
+        # Filter out non-equipment tables (revisions, drawing indices, title blocks, legends)
+        if any(ign in table_title for ign in [
+            "REVISION", "DRAWING LIST", "TITLE BLOCK", "DOCUMENT HISTORY",
+            "SITE DETAILS", "INDEX", "LEGEND", "ABBREVIATION", "GENERAL NOTE", "SITE SUMMARY"
+        ]):
+            continue
 
         # Identify column indices
         prop_idx = -1
         exist_idx = -1
         equip_idx = 1
-        model_idx = 1
         sec_idx = -1
         action_idx = -1
 
@@ -226,8 +228,8 @@ def run_agentic_boq_pipeline(
 
             sector_str = str(row[sec_idx]) if (sec_idx != -1 and len(row) > sec_idx) else ""
 
-            takeoff_items.append({
-                "id": f"takeoff_{len(takeoff_items):03d}",
+            raw_takeoff_items.append({
+                "id": f"takeoff_{len(raw_takeoff_items):03d}",
                 "model": full_desc,
                 "raw_description": full_desc,
                 "action": act,
@@ -238,7 +240,28 @@ def run_agentic_boq_pipeline(
                 "sector": sector_str
             })
 
-    print(f"[Agentic Pipeline] Stage 1 Extracted {len(takeoff_items)} active takeoff scopes from tables.")
+    # Consolidate takeoff items by unique scope (model, action, equipment_type) across sectors
+    scope_groups: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+    for item in raw_takeoff_items:
+        key = (item["model"].strip().upper(), item["action"].upper(), item["equipment_type"])
+        if key in scope_groups:
+            scope_groups[key]["quantity"] += item["quantity"]
+            if item.get("sector") and item["sector"] not in scope_groups[key]["sectors"]:
+                scope_groups[key]["sectors"].append(item["sector"])
+        else:
+            scope_groups[key] = {
+                "id": item["id"],
+                "model": item["model"],
+                "raw_description": item["raw_description"],
+                "action": item["action"],
+                "quantity": item["quantity"],
+                "source_sheet": item["source_sheet"],
+                "table_title": item["table_title"],
+                "equipment_type": item["equipment_type"],
+                "sectors": [item["sector"]] if item.get("sector") else []
+            }
+    takeoff_items = list(scope_groups.values())
+    print(f"[Agentic Pipeline] Stage 1 Consolidator produced {len(takeoff_items)} distinct equipment scopes from {len(raw_takeoff_items)} raw table rows.")
 
     # -------------------------------------------------------------------------
     # STAGE 2, 3 & 4: Constraint Filtering, Tool Deliberation, and Reconciling
@@ -246,8 +269,8 @@ def run_agentic_boq_pipeline(
     client_rules_prompt = get_prompt_by_name("client_mapping_rules", "")
     mapped_boq_items: List[Dict[str, Any]] = []
 
-    # Track ordinals per pricing group across sectors for FIRST vs EXTRA logic
-    group_ordinals: Dict[str, int] = {}
+    # Track site-wide ordinals per equipment category for base vs extra-over splitting
+    category_ordinals: Dict[str, int] = {}
 
     for t_item in takeoff_items:
         t_model = t_item["model"]
@@ -258,9 +281,15 @@ def run_agentic_boq_pipeline(
 
         # Fast deterministic path for feeder cables (encodes exact Telstra specifications)
         if t_class == "FEEDER_CABLE" and t_act == "INSTALL":
-            feeder_res = tool_resolve_feeder_cable(t_model, runs=t_qty)
-            if feeder_res.get("status") == "success" and feeder_res.get("allocations"):
-                for alloc in feeder_res["allocations"]:
+            runs_val = int(t_qty)
+            route_len = 35.0  # standard route length baseline unless extracted from notes
+            m_len = re.search(r'(\d+)\s*(?:M|METRE|METER)', t_model, re.IGNORECASE)
+            if m_len:
+                route_len = float(m_len.group(1))
+
+            feeder_res = tool_resolve_feeder_cable(t_model, runs=runs_val, route_length_m=route_len)
+            if feeder_res.get("status") == "success":
+                for alloc in feeder_res.get("allocations", []):
                     s_code = alloc["sor_code"]
                     s_qty = alloc["quantity"]
                     p_info = price_by_code.get(s_code, {})
@@ -326,8 +355,8 @@ def run_agentic_boq_pipeline(
 
         # Compute ordinal position for first vs extra-over tracking
         pricing_group = t_class
-        curr_ordinal = group_ordinals.get(pricing_group, 0) + 1
-        group_ordinals[pricing_group] = curr_ordinal + int(t_qty - 1)
+        curr_ordinal = category_ordinals.get(pricing_group, 0) + 1
+        category_ordinals[pricing_group] = curr_ordinal + int(t_qty - 1)
 
         # Stage 2: Deterministic Candidate Gating
         candidates = filter_candidates(t_item, price_list)
@@ -357,7 +386,7 @@ CLIENT RULES:
 {client_rules_prompt[:500]}
 
 MANDATORY DIRECTIVE:
-You have executable tools available. Before outputting your final decision, you MUST call 'tool_verify_commercial_basis' with your proposed SOR code and item_ordinal to ensure primary vs extra-over rules are strictly satisfied.
+You have executable tools available. Before outputting your final decision, you MUST call 'tool_verify_commercial_basis' with your proposed SOR code and item_ordinal={curr_ordinal} to ensure primary vs extra-over rules are strictly satisfied.
 Once verified, output your final decision in JSON format:
 {{"chosen_code": "SOR_CODE_OR_UNQUOTED", "reasoning": "rationale"}}"""
 
@@ -365,20 +394,15 @@ Once verified, output your final decision in JSON format:
             
             # Agent multi-turn loop (max 4 turns)
             for turn in range(4):
-                text_resp, tool_calls, used_model = send_agent_turn(
+                text_resp, tool_calls, raw_content, used_model = send_agent_turn(
                     messages, api_key, tools=GEMINI_TOOL_DECLARATIONS
                 )
 
-                if tool_calls:
-                    # Append model assistant call part
-                    assistant_parts = []
-                    if text_resp:
-                        assistant_parts.append({"text": text_resp})
-                    for tc in tool_calls:
-                        assistant_parts.append({"functionCall": tc})
-                    messages.append({"role": "model", "parts": assistant_parts})
+                if tool_calls and raw_content:
+                    # Append exact raw model response preserving thoughtSignature and call IDs
+                    messages.append(raw_content)
 
-                    # Execute tools and return functionResponse parts
+                    # Execute tools and return functionResponse parts with role="user"
                     tool_response_parts = []
                     for tc in tool_calls:
                         fn_name = tc.get("name", "")
@@ -394,12 +418,11 @@ Once verified, output your final decision in JSON format:
                                 "response": tool_out
                             }
                         })
-                    messages.append({"role": "function", "parts": tool_response_parts})
+                    messages.append({"role": "user", "parts": tool_response_parts})
                 else:
                     # Final response reached
                     if text_resp:
                         try:
-                            # Parse JSON if enclosed in markdown or plain text
                             clean_json = re.search(r'\{.*\}', text_resp, re.DOTALL)
                             if clean_json:
                                 parsed = json.loads(clean_json.group(0))
@@ -411,7 +434,6 @@ Once verified, output your final decision in JSON format:
 
         # If agent didn't finish or pick code, use deterministic fallback
         if not chosen_code or chosen_code == "UNQUOTED":
-            # Deterministic fallback check for antennas
             if t_class in ["PANEL_ANTENNA", "5G_AAU"]:
                 ant_res = tool_resolve_antenna(t_model, is_first=(curr_ordinal == 1))
                 chosen_code = ant_res["chosen_code"]
@@ -420,14 +442,57 @@ Once verified, output your final decision in JSON format:
                 chosen_code = candidates[0].get("code")
                 comment_str = "Matched based on constraint gate shortlist"
 
-        # Double check commercial basis self-check
+        # Commercial basis self-check
         if chosen_code and not verification_passed:
             v_check = tool_verify_commercial_basis(chosen_code, item_ordinal=curr_ordinal, total_proposed=int(t_qty))
             if not v_check.get("valid") and v_check.get("recommended_code"):
                 chosen_code = v_check["recommended_code"]
                 comment_str += f" | {v_check.get('reason')}"
 
-        # Populate mapped BOQ item
+        # Commercial allocation: split 1st unit (base) from subsequent units (extra-over)
+        if chosen_code in ["W7520", "W13358"] and t_qty > 1 and curr_ordinal == 1:
+            # 1. Base unit (Quantity = 1)
+            p_base = price_by_code.get(chosen_code, {})
+            b_rate = float(p_base.get("rate") or 0.0)
+            mapped_boq_items.append({
+                "sor_code": chosen_code,
+                "item_name": p_base.get("name"),
+                "quantity": 1.0,
+                "unit": p_base.get("unit", "each"),
+                "rate": b_rate,
+                "total_cost": b_rate,
+                "action": t_act,
+                "model": t_model,
+                "equipment_type": t_class,
+                "source_sheet": t_sheet,
+                "row_idx": p_base.get("row_idx") or p_base.get("id"),
+                "comment": f"{comment_str} (First unit on site)",
+                "aggregation_rule": "MAX"
+            })
+
+            # 2. Extra-over units (Quantity = t_qty - 1)
+            extra_code = "W13360" if chosen_code == "W7520" else "W13359"
+            extra_qty = float(t_qty - 1)
+            p_extra = price_by_code.get(extra_code, {})
+            x_rate = float(p_extra.get("rate") or 0.0)
+            mapped_boq_items.append({
+                "sor_code": extra_code,
+                "item_name": p_extra.get("name"),
+                "quantity": extra_qty,
+                "unit": p_extra.get("unit", "each"),
+                "rate": x_rate,
+                "total_cost": extra_qty * x_rate,
+                "action": t_act,
+                "model": t_model,
+                "equipment_type": t_class,
+                "source_sheet": t_sheet,
+                "row_idx": p_extra.get("row_idx") or p_extra.get("id"),
+                "comment": f"Extra over subsequent units ({int(extra_qty)} off)",
+                "aggregation_rule": "SUM"
+            })
+            continue
+
+        # Standard item allocation
         p_match = price_by_code.get(str(chosen_code).upper()) if chosen_code else None
         if p_match:
             rate = float(p_match.get("rate") or 0.0)
