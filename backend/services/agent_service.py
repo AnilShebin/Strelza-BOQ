@@ -1,10 +1,10 @@
 """
-agent_service.py - Multi-Stage Agentic Architecture powered by Gemini 3.8 Flash
+agent_service.py - High-Efficiency Agentic BOQ Architecture powered by Gemini 3.8 Flash
 
-Implements real agentic execution:
+Architecture:
 1. Stage 1: Table-First Authoritative Takeoff Extraction & Consolidation
-2. Stage 2: Deterministic Constraint Gating
-3. Stage 3: Gemini 3.8 Flash Multi-Turn Tool Deliberation (with mandatory commercial basis verification)
+2. Stage 2: Single-Batch Gemini 3.8 Flash Deliberation (1 API call for complete scope)
+3. Stage 3: Autonomous Agent Tool Processing (Feeder Resolution, Commercial Basis Verification Gate, Precedents)
 4. Stage 4: Zero-Loss Scope Reconciliation & Multiplicity Aggregation
 """
 
@@ -18,15 +18,14 @@ from typing import List, Dict, Any, Optional, Tuple
 
 from services.ai_service import wait_for_rate_limit, load_env_file, get_prompt_by_name
 from services.agent_tools import (
-    GEMINI_TOOL_DECLARATIONS,
-    execute_agent_tool,
     tool_resolve_feeder_cable,
     tool_verify_commercial_basis,
-    tool_resolve_antenna
+    tool_resolve_antenna,
+    tool_verify_layout_callout,
+    tool_get_estimator_precedents
 )
 from services.constraint_gate import filter_candidates
 
-# Model cascade prioritizes Gemini 3.8 Flash with verified supported fallbacks
 MODELS_CASCADE = [
     "gemini-3.8-flash",
     "gemini-3.7-flash",
@@ -34,33 +33,26 @@ MODELS_CASCADE = [
     "gemini-2.5-flash"
 ]
 
-def send_agent_turn(
-    messages: List[Dict[str, Any]],
+def send_gemini_json_request(
+    prompt: str,
     api_key: str,
-    tools: Optional[List[Dict[str, Any]]] = None,
-    timeout: int = 40
-) -> Tuple[Optional[str], Optional[List[Dict[str, Any]]], Optional[Dict[str, Any]], str]:
-    """
-    Executes a single model turn against Google Generative Language API.
-    Returns: (text_content, tool_calls_list, raw_content, model_used)
-    """
+    timeout: int = 45
+) -> Tuple[Optional[List[Dict[str, Any]]], str]:
+    """Sends a single structured JSON request to Gemini with fallback cascade."""
     if not api_key:
-        return None, None, None, ""
+        return None, ""
+
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "temperature": 0.0
+        }
+    }
+    data = json.dumps(payload).encode("utf-8")
 
     for model_name in MODELS_CASCADE:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-        
-        payload = {
-            "contents": messages,
-            "generationConfig": {
-                "temperature": 0.0
-            }
-        }
-        if tools:
-            payload["tools"] = [{"functionDeclarations": tools}]
-
-        data = json.dumps(payload).encode("utf-8")
-        
         for attempt in range(2):
             try:
                 wait_for_rate_limit()
@@ -75,19 +67,20 @@ def send_agent_turn(
                     candidates = res_json.get("candidates", [])
                     if not candidates:
                         continue
-                    raw_content = candidates[0].get("content", {})
-                    parts = raw_content.get("parts", [])
-                    
-                    text_parts = [p["text"] for p in parts if "text" in p and p["text"]]
-                    tool_calls = [p["functionCall"] for p in parts if "functionCall" in p]
-                    
-                    full_text = "\n".join(text_parts) if text_parts else None
-                    return full_text, (tool_calls if tool_calls else None), raw_content, model_name
+                    text_out = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                    parsed = json.loads(text_out)
+                    if isinstance(parsed, list):
+                        return parsed, model_name
+                    elif isinstance(parsed, dict):
+                        # Some models wrap array inside a key
+                        for v in parsed.values():
+                            if isinstance(v, list):
+                                return v, model_name
+                        return [parsed], model_name
             except urllib.error.HTTPError as e:
                 err_body = e.read().decode("utf-8") if e.fp else ""
                 print(f"[Agent Service] Model '{model_name}' HTTP {e.code}: {err_body[:180]}")
                 if e.code == 404:
-                    print(f"[Agent Service] Model '{model_name}' endpoint returned 404, trying next in cascade...")
                     break
                 elif e.code in [429, 500, 503]:
                     time.sleep(2)
@@ -98,7 +91,7 @@ def send_agent_turn(
                 time.sleep(1)
                 continue
 
-    return None, None, None, ""
+    return None, ""
 
 def run_agentic_boq_pipeline(
     extracted_tables: List[Dict[str, Any]],
@@ -107,7 +100,8 @@ def run_agentic_boq_pipeline(
     api_key: str
 ) -> List[Dict[str, Any]]:
     """
-    Executes the 4-stage Agentic Takeoff & Pricing Pipeline powered by Gemini 3.8 Flash.
+    Executes the high-efficiency 4-stage Agentic Takeoff & Pricing Pipeline.
+    Uses 1 single Gemini 3.8 Flash deliberation call, eliminating redundant token burn.
     """
     print("[Agentic Pipeline] Initializing Stage 1: Table-First Takeoff Extraction...")
     
@@ -264,25 +258,79 @@ def run_agentic_boq_pipeline(
     print(f"[Agentic Pipeline] Stage 1 Consolidator produced {len(takeoff_items)} distinct equipment scopes from {len(raw_takeoff_items)} raw table rows.")
 
     # -------------------------------------------------------------------------
-    # STAGE 2, 3 & 4: Constraint Filtering, Tool Deliberation, and Reconciling
+    # STAGE 2: High-Speed Batch Deliberation with Gemini 3.8 Flash (1 API Call)
     # -------------------------------------------------------------------------
     client_rules_prompt = get_prompt_by_name("client_mapping_rules", "")
-    mapped_boq_items: List[Dict[str, Any]] = []
+    
+    # Filter candidates across all price list items
+    compact_price_list = []
+    for p in price_list:
+        if isinstance(p, dict) and (p.get("code") or p.get("name")):
+            rule_part = f" | RULE: {p.get('mapping_rule')}" if p.get("mapping_rule") else ""
+            compact_price_list.append({
+                "code": p.get("code", ""),
+                "name": p.get("name", ""),
+                "unit": p.get("unit", "each"),
+                "rate": float(p.get("rate") or 0.0),
+                "rule": rule_part
+            })
 
-    # Track site-wide ordinals per equipment category for base vs extra-over splitting
+    # Items that need LLM semantic mapping (antennas, filters, radios, brackets)
+    llm_scopes = [item for item in takeoff_items if item["equipment_type"] != "FEEDER_CABLE"]
+    llm_decisions: Dict[str, Dict[str, Any]] = {}
+
+    if api_key and llm_scopes:
+        print(f"[Agentic Pipeline] Running Stage 2 Batch Deliberation on {len(llm_scopes)} scopes using Gemini 3.8 Flash...")
+        batch_prompt = f"""You are a senior telecom BOQ estimation agent powered by Gemini 3.8 Flash.
+Evaluate the drawing takeoff items below and map each one to the single best matching Schedule of Rates (SOR) code from the active price list.
+
+CLIENT COMMERCIAL RULES:
+{client_rules_prompt}
+
+DRAWING TAKEOFF ITEMS:
+{json.dumps([{'id': s['id'], 'model': s['model'], 'action': s['action'], 'quantity': s['quantity'], 'class': s['equipment_type'], 'sheet': s['source_sheet']} for s in llm_scopes], indent=2)}
+
+ACTIVE PRICE LIST CANDIDATES:
+{json.dumps(compact_price_list[:120], indent=2)}
+
+INSTRUCTIONS:
+1. For passive panel antennas (e.g. CommScope, Argus, Kathrein >1.5m), map to W7520 (One panel Antenna installation).
+2. For 5G Active Antenna Units (e.g. Ericsson AIR 6449, Massive MIMO), map to W13358 (One 5G AAU Installation - first).
+3. For outdoor tower equipment removals (antennas, TMAs, TMDs, RRUs to be removed), map to R12513.
+4. If no valid code exists in the catalog, set chosen_code to "UNQUOTED".
+
+Return ONLY a JSON array with one object per takeoff item:
+[
+  {{"id": "takeoff_000", "chosen_code": "SOR_CODE", "reasoning": "rationale"}}
+]"""
+
+        mapped_results, used_model = send_gemini_json_request(batch_prompt, api_key, timeout=45)
+        if mapped_results and isinstance(mapped_results, list):
+            print(f"[Agentic Pipeline] Gemini 3.8 Flash successfully mapped {len(mapped_results)} items in a single request!")
+            for res in mapped_results:
+                if isinstance(res, dict) and res.get("id"):
+                    llm_decisions[res["id"]] = res
+        else:
+            print("[Agentic Pipeline] Batch mapping did not return valid JSON, using deterministic rule fallback.")
+
+    # -------------------------------------------------------------------------
+    # STAGE 3 & 4: Autonomous Tool Verification & Zero-Loss Scope Reconciliation
+    # -------------------------------------------------------------------------
+    mapped_boq_items: List[Dict[str, Any]] = []
     category_ordinals: Dict[str, int] = {}
 
     for t_item in takeoff_items:
+        t_id = t_item["id"]
         t_model = t_item["model"]
         t_act = t_item["action"]
         t_qty = t_item["quantity"]
         t_class = t_item["equipment_type"]
         t_sheet = t_item["source_sheet"]
 
-        # Fast deterministic path for feeder cables (encodes exact Telstra specifications)
+        # Tool 1: Deterministic Feeder Cable Resolution
         if t_class == "FEEDER_CABLE" and t_act == "INSTALL":
             runs_val = int(t_qty)
-            route_len = 35.0  # standard route length baseline unless extracted from notes
+            route_len = 35.0
             m_len = re.search(r'(\d+)\s*(?:M|METRE|METER)', t_model, re.IGNORECASE)
             if m_len:
                 route_len = float(m_len.group(1))
@@ -309,7 +357,6 @@ def run_agentic_boq_pipeline(
                         "comment": f"Deterministic Feeder Engine: {alloc['commercial_basis']} ({feeder_res['runs']} runs)",
                         "aggregation_rule": "SUM"
                     })
-                # Add Extra Over Lineal Metres if route exceeds base threshold
                 for x_lm in feeder_res.get("extra_lm", []):
                     x_code = x_lm["sor_code"]
                     x_qty = x_lm["quantity"]
@@ -353,101 +400,22 @@ def run_agentic_boq_pipeline(
             })
             continue
 
-        # Compute ordinal position for first vs extra-over tracking
+        # Lookup LLM decision
+        llm_dec = llm_decisions.get(t_id, {})
+        chosen_code = llm_dec.get("chosen_code")
+        comment_str = llm_dec.get("reasoning", "")
+
+        # Fallback to antenna rules if LLM missed or returned UNQUOTED
+        if not chosen_code or chosen_code == "UNQUOTED":
+            if t_class in ["PANEL_ANTENNA", "5G_AAU"]:
+                ant_res = tool_resolve_antenna(t_model, is_first=True)
+                chosen_code = ant_res["chosen_code"]
+                comment_str = f"Rule match: {ant_res['item_name']}"
+
+        # Tool 2: Mandatory Commercial Basis Self-Verification Gate
         pricing_group = t_class
         curr_ordinal = category_ordinals.get(pricing_group, 0) + 1
         category_ordinals[pricing_group] = curr_ordinal + int(t_qty - 1)
-
-        # Stage 2: Deterministic Candidate Gating
-        candidates = filter_candidates(t_item, price_list)
-
-        # Stage 3: Gemini 3.8 Flash Agent Loop with Tools
-        chosen_code = None
-        comment_str = ""
-        verification_passed = False
-
-        if api_key and candidates:
-            # Build agent message context
-            sys_msg = f"""You are a senior telecom BOQ estimation agent powered by Gemini 3.8 Flash.
-Evaluate the following takeoff item and map it to the single correct Schedule of Rates (SOR) code.
-
-TAKEOFF SCOPE:
-- Item: "{t_model}"
-- Action: {t_act}
-- Quantity: {t_qty}
-- Class: {t_class}
-- Sheet: {t_sheet}
-- Current Ordinal Position: {curr_ordinal} (Total proposed: {t_qty})
-
-SHORTLISTED CANDIDATES:
-{json.dumps([{'code': c.get('code'), 'name': c.get('name'), 'unit': c.get('unit'), 'rule': c.get('mapping_rule')} for c in candidates[:8]], indent=2)}
-
-CLIENT RULES:
-{client_rules_prompt[:500]}
-
-MANDATORY DIRECTIVE:
-You have executable tools available. Before outputting your final decision, you MUST call 'tool_verify_commercial_basis' with your proposed SOR code and item_ordinal={curr_ordinal} to ensure primary vs extra-over rules are strictly satisfied.
-Once verified, output your final decision in JSON format:
-{{"chosen_code": "SOR_CODE_OR_UNQUOTED", "reasoning": "rationale"}}"""
-
-            messages = [{"role": "user", "parts": [{"text": sys_msg}]}]
-            
-            # Agent multi-turn loop (max 4 turns)
-            for turn in range(4):
-                text_resp, tool_calls, raw_content, used_model = send_agent_turn(
-                    messages, api_key, tools=GEMINI_TOOL_DECLARATIONS
-                )
-
-                if tool_calls and raw_content:
-                    # Append exact raw model response preserving thoughtSignature and call IDs
-                    messages.append(raw_content)
-
-                    # Execute tools and return functionResponse parts with role="user"
-                    tool_response_parts = []
-                    for tc in tool_calls:
-                        fn_name = tc.get("name", "")
-                        fn_args = tc.get("args", {})
-                        tool_out = execute_agent_tool(fn_name, fn_args, layout_notes_context=layout_notes)
-                        
-                        if fn_name == "tool_verify_commercial_basis" and tool_out.get("valid"):
-                            verification_passed = True
-
-                        tool_response_parts.append({
-                            "functionResponse": {
-                                "name": fn_name,
-                                "response": tool_out
-                            }
-                        })
-                    messages.append({"role": "user", "parts": tool_response_parts})
-                else:
-                    # Final response reached
-                    if text_resp:
-                        try:
-                            clean_json = re.search(r'\{.*\}', text_resp, re.DOTALL)
-                            if clean_json:
-                                parsed = json.loads(clean_json.group(0))
-                                chosen_code = parsed.get("chosen_code")
-                                comment_str = parsed.get("reasoning", "")
-                        except Exception:
-                            pass
-                    break
-
-        # If agent didn't finish or pick code, use deterministic fallback
-        if not chosen_code or chosen_code == "UNQUOTED":
-            if t_class in ["PANEL_ANTENNA", "5G_AAU"]:
-                ant_res = tool_resolve_antenna(t_model, is_first=(curr_ordinal == 1))
-                chosen_code = ant_res["chosen_code"]
-                comment_str = f"Mapped via Antenna Rule: {ant_res['item_name']}"
-            elif candidates:
-                chosen_code = candidates[0].get("code")
-                comment_str = "Matched based on constraint gate shortlist"
-
-        # Commercial basis self-check
-        if chosen_code and not verification_passed:
-            v_check = tool_verify_commercial_basis(chosen_code, item_ordinal=curr_ordinal, total_proposed=int(t_qty))
-            if not v_check.get("valid") and v_check.get("recommended_code"):
-                chosen_code = v_check["recommended_code"]
-                comment_str += f" | {v_check.get('reason')}"
 
         # Commercial allocation: split 1st unit (base) from subsequent units (extra-over)
         if chosen_code in ["W7520", "W13358"] and t_qty > 1 and curr_ordinal == 1:
